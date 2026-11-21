@@ -15,7 +15,7 @@ import java.util.Locale;
 
 public final class SoulCommand implements TabExecutor {
 
-    private static final List<String> PLAYER_SUBS = List.of("status", "event");
+    private static final List<String> PLAYER_SUBS = List.of("status", "event", "time");
     private static final List<String> ADMIN_SUBS = List.of("admin", "revive", "eliminate", "reset", "givebeacon", "ritual", "reload");
 
     private final SoulboundPlugin plugin;
@@ -39,6 +39,7 @@ public final class SoulCommand implements TabExecutor {
         switch (sub) {
             case "status" -> status(sender, args);
             case "event" -> event(sender, args);
+            case "time" -> time(sender, args);
             case "admin" -> {
                 if (sender instanceof Player p) plugin.adminGui().openMain(p);
                 else msg.send(sender, "<red>The admin menu is for players only.");
@@ -60,6 +61,7 @@ public final class SoulCommand implements TabExecutor {
     private void help(CommandSender s) {
         plugin.msg().send(s, "<white>/sb status [player] <gray>- soul status");
         plugin.msg().send(s, "<white>/sb event <gray>- current event");
+        plugin.msg().send(s, "<white>/sb time <gray>- event schedule" + (admin(s) ? " | <white>/sb time interval|duration <value>" : ""));
         if (admin(s)) {
             plugin.msg().send(s, "<white>/sbadmin <gray>- admin menu (events + revive)");
             plugin.msg().send(s, "<white>/sbroadcast [-t] [-q] <message>");
@@ -136,17 +138,46 @@ public final class SoulCommand implements TabExecutor {
                     msg.send(sender, "<red>Unknown event. Use /sb event list.");
                     return;
                 }
-                double hours = plugin.getConfig().getDouble("events.interval-hours", 12);
                 if (args.length > 3) {
-                    try { hours = Double.parseDouble(args[3]); } catch (NumberFormatException ex) {
-                        msg.send(sender, "<red>Invalid hours.");
+                    Double hours = Msg.parseHours(args[3]);
+                    if (hours == null || hours <= 0) {
+                        msg.send(sender, "<red>Invalid time. Examples: 30m, 6h, 1d");
                         return;
                     }
+                    em.setEvent(e, (long) (hours * 3_600_000L));
+                } else {
+                    em.setEvent(e);
                 }
-                em.setEvent(e, (long) (hours * 3_600_000L));
             }
             default -> msg.send(sender, "<red>Usage: /sb event <roll|set|stop|list>");
         }
+    }
+
+    private void time(CommandSender sender, String[] args) {
+        Msg msg = plugin.msg();
+        EventManager em = plugin.events();
+        if (args.length == 1) {
+            msg.send(sender, em.timingSummary());
+            return;
+        }
+        if (!admin(sender)) {
+            msg.send(sender, "<red>You don't have permission to do that.");
+            return;
+        }
+        String which = args[1].toLowerCase(Locale.ROOT);
+        if (args.length < 3 || !(which.equals("interval") || which.equals("duration"))) {
+            msg.send(sender, "<red>Usage: /sb time <interval|duration> <value>  <gray>(e.g. 30m, 6h, 1d; duration 0 = until next event)");
+            return;
+        }
+        Double hours = Msg.parseHours(args[2]);
+        if (hours == null || (which.equals("interval") && hours <= 0)) {
+            msg.send(sender, "<red>Invalid time. Examples: 30m, 6h, 12h, 1d");
+            return;
+        }
+        if (which.equals("interval")) em.setIntervalHours(hours);
+        else em.setDurationHours(hours);
+        msg.send(sender, "<green>Saved. " + em.timingSummary());
+        msg.send(sender, "<dark_gray>Duration changes apply from the next event; use /sb event set <id> <time> to change the current one.");
     }
 
     // ------------------------------------------------------------------ admin tools
@@ -243,9 +274,12 @@ public final class SoulCommand implements TabExecutor {
                 case "status", "revive", "eliminate", "reset", "givebeacon" ->
                         Bukkit.getOnlinePlayers().forEach(p -> out.add(p.getName()));
                 case "event" -> { if (admin(sender)) out.addAll(List.of("roll", "set", "stop", "list")); }
+                case "time" -> { if (admin(sender)) out.addAll(List.of("interval", "duration")); }
                 case "ritual" -> out.addAll(List.of("info", "cancel"));
                 default -> { }
             }
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("time") && admin(sender)) {
+            out.addAll(List.of("0", "30m", "1h", "6h", "12h", "1d"));
         } else if (args.length == 3 && args[0].equalsIgnoreCase("event") && args[1].equalsIgnoreCase("set")) {
             for (SoulEvent e : SoulEvent.values()) out.add(e.id);
         }

@@ -26,7 +26,7 @@ import java.util.UUID;
 /** /sbadmin - click menu for ops: set the event, revive players. */
 public final class AdminGui implements Listener {
 
-    private enum Type { MAIN, EVENTS, REVIVE }
+    private enum Type { MAIN, EVENTS, REVIVE, TIMING }
 
     private static final class Holder implements InventoryHolder {
         final Type type;
@@ -95,6 +95,36 @@ public final class AdminGui implements Listener {
                 "<gray>Eliminated players: <white>" + dead, "<dark_gray>Click to choose a player"));
         inv.setItem(14, item(Material.ENDER_EYE, "<yellow><bold>Roll Random Event", false, "roll", "<dark_gray>Starts a random event now"));
         inv.setItem(16, item(Material.BARRIER, "<red><bold>Stop Current Event", false, "stop", "<dark_gray>Ends the event; next one after a full interval"));
+        inv.setItem(22, item(Material.REPEATER, "<aqua><bold>Event Timing", false, "timing",
+                "<gray>Every <white>" + Msg.hours(plugin.events().intervalHours()),
+                "<dark_gray>Change how often events start and how long they last"));
+        p.openInventory(inv);
+    }
+
+    public void openTiming(Player p) {
+        Holder h = new Holder(Type.TIMING);
+        Inventory inv = Bukkit.createInventory(h, 36, Component.text("Event timing", NamedTextColor.DARK_PURPLE));
+        h.inv = inv;
+        EventManager em = plugin.events();
+
+        inv.setItem(13, item(Material.CLOCK, "<light_purple><bold>Interval", false, null,
+                "<gray>A new event starts every <white>" + Msg.hours(em.intervalHours()),
+                "<dark_gray>Next event in " + Msg.clock(em.nextRollSeconds())));
+        inv.setItem(22, item(Material.REPEATER, "<aqua><bold>Duration", false, null,
+                "<gray>Each event lasts <white>" + (em.durationHours() <= 0 ? "until the next event" : Msg.hours(Math.min(em.durationHours(), em.intervalHours()))),
+                "<dark_gray>0 = until the next event starts"));
+
+        double[] steps = {-6, -1, 1, 6};
+        int[] intervalSlots = {10, 11, 15, 16};
+        int[] durationSlots = {19, 20, 24, 25};
+        for (int i = 0; i < steps.length; i++) {
+            boolean plus = steps[i] > 0;
+            String name = (plus ? "<green>" : "<red>") + "<bold>" + (plus ? "+" : "") + Msg.num(steps[i]) + "h";
+            Material mat = plus ? Material.LIME_STAINED_GLASS_PANE : Material.RED_STAINED_GLASS_PANE;
+            inv.setItem(intervalSlots[i], item(mat, name, false, "time:interval:" + Msg.num(steps[i])));
+            inv.setItem(durationSlots[i], item(mat, name, false, "time:duration:" + Msg.num(steps[i])));
+        }
+        inv.setItem(31, item(Material.ARROW, "<gray>Back", false, "back"));
         p.openInventory(inv);
     }
 
@@ -164,7 +194,7 @@ public final class AdminGui implements Listener {
             SoulEvent ev = SoulEvent.byId(action.substring(6));
             if (ev == null) return;
             p.closeInventory();
-            plugin.events().setEvent(ev, plugin.events().intervalMillis());
+            plugin.events().setEvent(ev);
             msg.send(p, "<green>Event set to " + ev.color + ev.display + "<green>.");
         } else if (action.startsWith("player:")) {
             UUID id;
@@ -174,8 +204,18 @@ public final class AdminGui implements Listener {
             p.closeInventory();
             plugin.rituals().forceRevive(r);
             msg.send(p, "<green>Revived <white>" + Msg.esc(r.name) + "<green>.");
+        } else if (action.startsWith("time:")) {
+            String[] parts = action.split(":");
+            if (parts.length != 3) return;
+            double delta;
+            try { delta = Double.parseDouble(parts[2]); } catch (NumberFormatException ex) { return; }
+            EventManager em = plugin.events();
+            if (parts[1].equals("interval")) em.setIntervalHours(Math.max(1.0, em.intervalHours() + delta));
+            else em.setDurationHours(Math.max(0, em.durationHours() + delta));
+            Bukkit.getScheduler().runTask(plugin, () -> openTiming(p));
         } else {
             switch (action) {
+                case "timing" -> Bukkit.getScheduler().runTask(plugin, () -> openTiming(p));
                 case "events" -> Bukkit.getScheduler().runTask(plugin, () -> openEvents(p));
                 case "revive" -> Bukkit.getScheduler().runTask(plugin, () -> openRevive(p));
                 case "back" -> Bukkit.getScheduler().runTask(plugin, () -> openMain(p));

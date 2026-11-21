@@ -46,7 +46,9 @@ public final class EventManager {
     private SoulEvent previous;
     private long endsAt;
     private long totalMillis;
-    private long suspendedUntil;
+    private long startedAt;
+    private long nextRollAt;
+    private boolean forced;
     private long ticks;
     private BukkitTask task;
 
@@ -57,8 +59,43 @@ public final class EventManager {
 
     private FileConfiguration cfg() { return plugin.getConfig(); }
 
-    public long intervalMillis() {
-        return (long) (Math.max(0.01, cfg().getDouble("events.interval-hours", 12)) * 3_600_000L);
+    // ---- timing settings (config: events.interval-hours / events.duration-hours)
+
+    public double intervalHours() { return Math.max(1.0 / 60.0, cfg().getDouble("events.interval-hours", 12)); }
+
+    /** 0 = "until the next event". */
+    public double durationHours() { return Math.max(0, cfg().getDouble("events.duration-hours", 0)); }
+
+    public long intervalMillis() { return (long) (intervalHours() * 3_600_000L); }
+
+    /** How long a scheduled event lasts (never longer than the interval). */
+    public long durationMillis() {
+        double d = durationHours();
+        long ms = d <= 0 ? intervalMillis() : (long) (d * 3_600_000L);
+        return Math.min(ms, intervalMillis());
+    }
+
+    public void setIntervalHours(double hours) {
+        cfg().set("events.interval-hours", Math.max(1.0 / 60.0, Math.round(hours * 1000) / 1000.0));
+        plugin.saveConfig();
+        // Re-base the countdown to the new interval (unless an admin-forced event is running).
+        if (startedAt > 0 && !(forced && current != null)) {
+            nextRollAt = startedAt + intervalMillis();
+            persist();
+        }
+    }
+
+    public void setDurationHours(double hours) {
+        cfg().set("events.duration-hours", Math.max(0, Math.round(hours * 1000) / 1000.0));
+        plugin.saveConfig();
+    }
+
+    public long nextRollSeconds() { return Math.max(0, (nextRollAt - System.currentTimeMillis()) / 1000); }
+
+    public String timingSummary() {
+        String dur = durationHours() <= 0 ? "until the next event" : Msg.hours(Math.min(durationHours(), intervalHours()));
+        String next = !enabled() ? "events are disabled" : "next event in <white>" + Msg.clock(nextRollSeconds());
+        return "<gray>A new event every <white>" + Msg.hours(intervalHours()) + "<gray>, each lasts <white>" + dur + "<gray> | " + next;
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -69,6 +106,10 @@ public final class EventManager {
         previous = SoulEvent.byId(y.getString("event.previous"));
         endsAt = y.getLong("event.ends-at", 0);
         totalMillis = y.getLong("event.total", intervalMillis());
+        startedAt = y.getLong("event.started-at", 0);
+        forced = y.getBoolean("event.forced", false);
+        nextRollAt = y.getLong("event.next-roll", -1);
+        if (nextRollAt < 0) nextRollAt = current != null ? endsAt : 0;
         if (current != null) {
             for (Player p : Bukkit.getOnlinePlayers()) {
                 p.showBossBar(bar);
@@ -101,7 +142,7 @@ public final class EventManager {
             plugin.msg().broadcast(current.color + "<bold>" + current.display + "</bold><gray> has ended.");
             endCurrent();
         }
-        if (current == null && enabled() && now >= suspendedUntil) roll();
+        if (enabled() && now >= nextRollAt) roll();
     }
 
     public void roll() {
@@ -118,15 +159,24 @@ public final class EventManager {
             for (SoulEvent e : SoulEvent.values()) if (!disabled.contains(e)) pool.add(e);
         }
         if (pool.isEmpty()) return;
-        setEvent(pool.get(ThreadLocalRandom.current().nextInt(pool.size())), intervalMillis());
+        startEvent(pool.get(ThreadLocalRandom.current().nextInt(pool.size())), durationMillis(), false);
     }
 
-    public void setEvent(SoulEvent e, long durationMillis) {
+    /** Starts an event with the configured duration; the next one follows the normal schedule. */
+    public void setEvent(SoulEvent e) { startEvent(e, durationMillis(), false); }
+
+    /** Starts an event with a custom duration; the next random event begins when it ends. */
+    public void setEvent(SoulEvent e, long durationMillis) { startEvent(e, durationMillis, true); }
+
+    private void startEvent(SoulEvent e, long durationMillis, boolean forcedStart) {
         if (current != null) endCurrent();
+        long now = System.currentTimeMillis();
         current = e;
         totalMillis = durationMillis;
-        endsAt = System.currentTimeMillis() + durationMillis;
-        suspendedUntil = 0;
+        startedAt = now;
+        endsAt = now + durationMillis;
+        forced = forcedStart;
+        nextRollAt = forcedStart ? endsAt : now + intervalMillis();
         persist();
 
         for (Player p : Bukkit.getOnlinePlayers()) {
@@ -162,7 +212,11 @@ public final class EventManager {
     /** Admin stop: no new event until a full interval has passed. */
     public void stop() {
         endCurrent();
-        suspendedUntil = System.currentTimeMillis() + intervalMillis();
+        long now = System.currentTimeMillis();
+        startedAt = now;
+        forced = false;
+        nextRollAt = now + intervalMillis();
+        persist();
     }
 
     private void persist() {
@@ -171,6 +225,9 @@ public final class EventManager {
         y.set("event.previous", previous == null ? null : previous.id);
         y.set("event.ends-at", endsAt);
         y.set("event.total", totalMillis);
+        y.set("event.started-at", startedAt);
+        y.set("event.next-roll", nextRollAt);
+        y.set("event.forced", forced);
         plugin.data().save();
     }
 

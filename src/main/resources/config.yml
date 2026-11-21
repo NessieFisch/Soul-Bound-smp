@@ -39,8 +39,11 @@ ritual:
 
 events:
   enabled: true
-  # A new random event starts every X hours and lasts until the next one.
+  # How often a new random event starts, in hours (decimals ok: 0.5 = 30 min).
   interval-hours: 12
+  # How long each event lasts, in hours. 0 = until the next event starts.
+  # Can't be longer than interval-hours. In game: /sb time interval|duration <value>
+  duration-hours: 0
   announce-sound: true
   # Event ids to exclude from the rotation, e.g. [the_silence, no_escape]
   disabled: []

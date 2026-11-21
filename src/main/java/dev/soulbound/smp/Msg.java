@@ -8,6 +8,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
 import java.time.Duration;
+import java.util.Locale;
 
 public final class Msg {
 
@@ -48,6 +49,28 @@ public final class Msg {
     public static String clock(long totalSeconds) {
         long h = totalSeconds / 3600, m = (totalSeconds % 3600) / 60, s = totalSeconds % 60;
         return h > 0 ? String.format("%d:%02d:%02d", h, m, s) : String.format("%d:%02d", m, s);
+    }
+
+    /** Parses "30m", "6h", "1d" or a plain number of hours. Returns null if invalid. */
+    public static Double parseHours(String s) {
+        if (s == null || s.isBlank()) return null;
+        s = s.trim().toLowerCase(Locale.ROOT);
+        double mult = 1.0;
+        if (s.endsWith("m")) { mult = 1.0 / 60.0; s = s.substring(0, s.length() - 1); }
+        else if (s.endsWith("h")) { s = s.substring(0, s.length() - 1); }
+        else if (s.endsWith("d")) { mult = 24.0; s = s.substring(0, s.length() - 1); }
+        try {
+            double v = Double.parseDouble(s) * mult;
+            return v < 0 ? null : v;
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    /** 0.5 -> "30 min", 12 -> "12h", 1.5 -> "1.5h" */
+    public static String hours(double h) {
+        if (h < 1.0) return Math.round(h * 60) + " min";
+        return num(Math.round(h * 100) / 100.0) + "h";
     }
 
     public static String num(double d) {
