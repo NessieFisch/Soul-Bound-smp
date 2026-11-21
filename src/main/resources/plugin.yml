@@ -1,0 +1,27 @@
+name: SoulboundSMP
+version: 1.0.0
+main: dev.soulbound.smp.SoulboundPlugin
+api-version: '1.21'
+description: Hardcore SMP with one revive per soul, ritual altars and rotating world events.
+commands:
+  soulbound:
+    description: Soulbound SMP main command
+    usage: /soulbound <status|event|...>
+    aliases: [sb]
+  sbadmin:
+    description: Open the Soulbound admin menu (set event / revive players)
+    usage: /sbadmin
+    aliases: [sa]
+    permission: soulbound.admin
+  sbroadcast:
+    description: Broadcast a message to all players
+    usage: /sbroadcast [-t] [-q] <message>
+    aliases: [sbc, announce]
+    permission: soulbound.admin
+permissions:
+  soulbound.admin:
+    description: Use admin subcommands
+    default: op
+  soulbound.bypass:
+    description: Not affected by elimination (for staff / testing)
+    default: false
