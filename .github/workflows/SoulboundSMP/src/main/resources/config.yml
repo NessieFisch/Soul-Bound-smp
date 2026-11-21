@@ -1,0 +1,66 @@
+# ------------------------------------------------------------------
+#  SOULBOUND SMP
+# ------------------------------------------------------------------
+prefix: "<dark_gray>[<dark_purple>Soulbound<dark_gray>] <gray>"
+
+hardcore:
+  # A player who dies AFTER their one revive was used is permanently banned.
+  ban-on-final-death: true
+  # Ticks before the death screen is skipped and the player becomes a spectator.
+  auto-respawn-delay-ticks: 40
+  # Ticks between a final death and the ban (so they can see what happened).
+  ban-delay-ticks: 100
+  # Eliminated players spectate, but may only roam this many blocks from where
+  # they died (stops dead players scouting for the team / finding rituals). 0 = unlimited.
+  spectator-radius: 100
+
+revive-beacon:
+  recipe:
+    shape: ["DTD", "GNG", "OOO"]
+    ingredients:
+      "D": DIAMOND_BLOCK
+      "T": TOTEM_OF_UNDYING
+      "G": GOLD_BLOCK
+      "N": NETHER_STAR
+      "O": OBSIDIAN
+
+ritual:
+  # How long the ritual lasts once started.
+  duration-seconds: 600
+  # The altar: a square platform made of this block directly UNDER the placed Revive Beacon.
+  platform-block: GOLD_BLOCK
+  # 1 = 3x3, 2 = 5x5 ...
+  platform-radius: 1
+  # Coordinates are announced to the whole server when the ritual begins.
+  broadcast-coordinates: true
+  # Re-announce coordinates + time left every N seconds (0 = never).
+  reminder-interval-seconds: 60
+  keep-chunk-loaded: true
+
+events:
+  enabled: true
+  # A new random event starts every X hours and lasts until the next one.
+  interval-hours: 12
+  announce-sound: true
+  # Event ids to exclude from the rotation, e.g. [the_silence, no_escape]
+  disabled: []
+
+  blood-moon:
+    damage-multiplier: 2.0
+  soul-drain:
+    hearts: 1
+  fragile-world:
+    radius: 12
+    attempts-per-player: 25
+    interval-ticks: 40
+  hunger-games:
+    multiplier: 3.0
+  beast-awakening:
+    health-multiplier: 2.0
+    damage-multiplier: 1.5
+    speed-multiplier: 1.2
+    # Chance that a natural hostile spawn is joined by a second (also buffed) one.
+    bonus-spawn-chance: 0.25
+  the-silence:
+    # Private-message commands are blocked too, otherwise people could still talk.
+    blocked-commands: [msg, tell, w, whisper, say, me, teammsg, tm, reply, r]
