@@ -42,6 +42,12 @@ public final class Msg {
         for (Player p : Bukkit.getOnlinePlayers()) title(p, title, subtitle);
     }
 
+    public void titleAll(String title, String subtitle, long fadeInMs, long stayMs, long fadeOutMs) {
+        Title t = Title.title(parse(title), parse(subtitle),
+                Title.Times.times(Duration.ofMillis(fadeInMs), Duration.ofMillis(stayMs), Duration.ofMillis(fadeOutMs)));
+        for (Player p : Bukkit.getOnlinePlayers()) p.showTitle(t);
+    }
+
     public void actionBar(Player p, String mini) { p.sendActionBar(parse(mini)); }
 
     public static String esc(String s) { return MM.escapeTags(s); }

@@ -7,6 +7,7 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
@@ -54,6 +55,11 @@ public final class EventManager {
     private boolean forced;
     private long ticks;
     private BukkitTask task;
+    private SoulEvent queued;
+    private SoulEvent pending;
+    private int countdown;
+    private int milestone;
+    private static final int[] MILESTONES = {300, 60, 10};
 
     public EventManager(SoulboundPlugin plugin) {
         this.plugin = plugin;
@@ -118,6 +124,7 @@ public final class EventManager {
         totalMillis = y.getLong("event.total", intervalMillis());
         startedAt = y.getLong("event.started-at", 0);
         forced = y.getBoolean("event.forced", false);
+        queued = SoulEvent.byId(y.getString("event.queued"));
         nextRollAt = y.getLong("event.next-roll", -1);
         if (nextRollAt < 0) nextRollAt = current != null ? endsAt : 0;
         if (current != null) {
@@ -176,7 +183,7 @@ public final class EventManager {
     }
 
     public double beastBonusChance() {
-        return num("events.beast-awakening.bonus-spawn-chance", 0.25, "events.super-hell.bonus-spawn-chance", 0.75);
+        return num("events.beast-awakening.bonus-spawn-chance", 0.25, "events.super-hell.bonus-spawn-chance", 0.6);
     }
 
     public int bountifulMultiplier() { return Math.max(1, cfg().getInt("events.bountiful-drops.multiplier", 2)); }
@@ -188,11 +195,19 @@ public final class EventManager {
     private void checkSchedule() {
         long now = System.currentTimeMillis();
         if (current != null && now >= endsAt) {
-            if (isHell()) plugin.msg().broadcast("<green><bold>SUPER HELL HAS ENDED.</bold><gray> You survived.");
-            else plugin.msg().broadcast(current.color + "<bold>" + current.display + "</bold><gray> has ended.");
+            if (isHell()) {
+                plugin.msg().broadcast("<green><bold>SUPER HELL HAS ENDED.</bold><gray> You survived.");
+                plugin.msg().titleAll("<green><bold>YOU SURVIVED</bold>", "<gray>Super Hell has ended");
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
+                    celebrate(p);
+                }
+            } else {
+                plugin.msg().broadcast(current.color + "<bold>" + current.display + "</bold><gray> has ended.");
+            }
             endCurrent();
         }
-        if (enabled() && now >= nextRollAt) roll();
+        if (enabled() && pending == null && now >= nextRollAt) rollWithCountdown();
     }
 
     private List<SoulEvent> candidates(List<SoulEvent> disabled, SoulEvent.Category cat, boolean excludeRecent) {
@@ -206,7 +221,14 @@ public final class EventManager {
         return out;
     }
 
-    public void roll() {
+    /** Chooses the next event: a queued one first, otherwise random (rare Super Hell, then blessing/curse). */
+    private SoulEvent pickEvent() {
+        if (queued != null) {
+            SoulEvent q = queued;
+            queued = null;
+            persist();
+            return q;
+        }
         List<SoulEvent> disabled = new ArrayList<>();
         for (String id : cfg().getStringList("events.disabled")) {
             SoulEvent e = SoulEvent.byId(id);
@@ -214,11 +236,9 @@ public final class EventManager {
         }
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
 
-        // rare: SUPER HELL (30 min), then the normal schedule continues
         if (!disabled.contains(SoulEvent.SUPER_HELL) && current != SoulEvent.SUPER_HELL && previous != SoulEvent.SUPER_HELL
-                && rnd.nextDouble() < cfg().getDouble("events.super-hell-chance", 0.05)) {
-            startEvent(SoulEvent.SUPER_HELL, durationFor(SoulEvent.SUPER_HELL), true);
-            return;
+                && rnd.nextDouble() < cfg().getDouble("events.super-hell-chance", 0.08)) {
+            return SoulEvent.SUPER_HELL;
         }
 
         SoulEvent.Category wanted = rnd.nextDouble() < cfg().getDouble("events.good-event-chance", 0.3)
@@ -226,9 +246,59 @@ public final class EventManager {
         List<SoulEvent> pool = candidates(disabled, wanted, true);
         if (pool.isEmpty()) pool = candidates(disabled, wanted, false);
         if (pool.isEmpty()) pool = candidates(disabled, null, false);
-        if (pool.isEmpty()) return;
-        startEvent(pool.get(rnd.nextInt(pool.size())), durationMillis(), false);
+        if (pool.isEmpty()) return null;
+        return pool.get(rnd.nextInt(pool.size()));
     }
+
+    /** Rolls and starts the next event instantly (no countdown). */
+    public void roll() {
+        SoulEvent e = pickEvent();
+        if (e != null) setEvent(e);
+    }
+
+    /** Rolls the next event with a suspense countdown (Super Hell is announced by name, others are a surprise). */
+    public void rollWithCountdown() {
+        if (pending != null) return;
+        SoulEvent e = pickEvent();
+        if (e == null) {
+            nextRollAt = System.currentTimeMillis() + intervalMillis();
+            persist();
+            return;
+        }
+        int warn = Math.max(0, cfg().getInt("events.warning-seconds", 10));
+        if (warn == 0) {
+            setEvent(e);
+            return;
+        }
+        pending = e;
+        countdown = warn;
+        if (e == SoulEvent.SUPER_HELL) plugin.msg().broadcast("<dark_red><bold>☠ SOMETHING TERRIBLE IS COMING... brace yourselves.</bold>");
+        else plugin.msg().broadcast("<gray>A new event is about to begin...");
+    }
+
+    private void countdownTick() {
+        if (pending == null) return;
+        if (countdown <= 0) {
+            SoulEvent e = pending;
+            pending = null;
+            setEvent(e);
+            return;
+        }
+        boolean hell = pending == SoulEvent.SUPER_HELL;
+        plugin.msg().titleAll((hell ? "<dark_red>" : "<yellow>") + "<bold>" + countdown + "</bold>",
+                hell ? "<red>SUPER HELL is about to begin" : "<gray>A new event is about to begin", 0, 900, 100);
+        float pitch = hell ? 0.5f : (countdown <= 3 ? 1.5f : 1.0f);
+        for (Player p : Bukkit.getOnlinePlayers()) p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, pitch);
+        countdown--;
+    }
+
+    /** Queue the next scheduled event (e.g. to plan a video moment). null clears the queue. */
+    public void setQueued(SoulEvent e) {
+        queued = e;
+        persist();
+    }
+
+    public SoulEvent queued() { return queued; }
 
     /** Starts an event with its normal duration (Super Hell: 30 min, then a normal event follows). */
     public void setEvent(SoulEvent e) { startEvent(e, durationFor(e), e == SoulEvent.SUPER_HELL); }
@@ -239,12 +309,16 @@ public final class EventManager {
     private void startEvent(SoulEvent e, long durationMillis, boolean forcedStart) {
         if (current != null) endCurrent();
         long now = System.currentTimeMillis();
+        pending = null;
         current = e;
         totalMillis = durationMillis;
         startedAt = now;
         endsAt = now + durationMillis;
         forced = forcedStart;
-        nextRollAt = forcedStart ? endsAt : now + intervalMillis();
+        // after Super Hell give everyone a 30 s breather before the next event
+        nextRollAt = forcedStart ? endsAt + (e == SoulEvent.SUPER_HELL ? 30_000L : 0L) : now + intervalMillis();
+        milestone = 0;
+        while (milestone < MILESTONES.length && MILESTONES[milestone] >= durationMillis / 1000) milestone++;
         persist();
 
         for (Player p : Bukkit.getOnlinePlayers()) {
@@ -271,6 +345,7 @@ public final class EventManager {
             float pitch = hell ? 0.5f : good ? 1.0f : 0.6f;
             for (Player p : Bukkit.getOnlinePlayers()) p.playSound(p.getLocation(), snd, hell ? 1.0f : 0.6f, pitch);
         }
+        intro(e);
     }
 
     /** Ends the current event without starting a new one. */
@@ -290,6 +365,7 @@ public final class EventManager {
     /** Admin stop: no new event until a full interval has passed. */
     public void stop() {
         endCurrent();
+        pending = null;
         long now = System.currentTimeMillis();
         startedAt = now;
         forced = false;
@@ -306,6 +382,7 @@ public final class EventManager {
         y.set("event.started-at", startedAt);
         y.set("event.next-roll", nextRollAt);
         y.set("event.forced", forced);
+        y.set("event.queued", queued == null ? null : queued.id);
         plugin.data().save();
     }
 
@@ -355,12 +432,16 @@ public final class EventManager {
             }
         }
         if (ticks % 20 == 0) {
+            countdownTick();
             checkSchedule();
             if (current != null) {
                 updateBar();
                 if (isActive(SoulEvent.ETERNAL_NIGHT)) night();
                 blessings();
-                if (isHell()) hellfire();
+                if (isHell()) {
+                    hellfire();
+                    milestones();
+                }
             }
         }
     }
@@ -438,6 +519,40 @@ public final class EventManager {
         }
     }
 
+    // ------------------------------------------------------------------ cinematic touches
+
+    /** Visual-only flair when an event begins (no damage). */
+    private void intro(SoulEvent e) {
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.getGameMode() == GameMode.SPECTATOR) continue;
+            if (e == SoulEvent.SUPER_HELL) {
+                Location l = p.getLocation().add(rnd.nextInt(-6, 7), 0, rnd.nextInt(-6, 7));
+                p.getWorld().strikeLightningEffect(l);
+                p.playSound(p.getLocation(), Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 1f, 0.8f);
+            } else if (e.category == SoulEvent.Category.GOOD) {
+                celebrate(p);
+                p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1f);
+            }
+        }
+    }
+
+    private void celebrate(Player p) {
+        if (p.getGameMode() == GameMode.SPECTATOR) return;
+        Location l = p.getLocation().add(0, 1, 0);
+        p.getWorld().spawnParticle(Particle.FIREWORK, l, 50, 0.6, 0.8, 0.6, 0.08);
+        p.getWorld().spawnParticle(Particle.TOTEM_OF_UNDYING, l, 30, 0.5, 0.8, 0.5, 0.2);
+    }
+
+    /** "Super Hell ends in 5:00 / 1:00 / 0:10" */
+    private void milestones() {
+        long left = remainingSeconds();
+        while (milestone < MILESTONES.length && left <= MILESTONES[milestone]) {
+            plugin.msg().broadcast("<red>Super Hell ends in <white>" + Msg.clock(MILESTONES[milestone]) + "<red>. Hold on.");
+            milestone++;
+        }
+    }
+
     // ------------------------------------------------------------------ SUPER HELL extras
 
     /** Permanent thunderstorm + lightning striking around every player. */
@@ -482,11 +597,11 @@ public final class EventManager {
 
     public void buff(LivingEntity e) {
         scale(e, Attribute.MAX_HEALTH, "beast_health",
-                num("events.beast-awakening.health-multiplier", 2.0, "events.super-hell.health-multiplier", 3.0));
+                num("events.beast-awakening.health-multiplier", 2.0, "events.super-hell.health-multiplier", 2.5));
         scale(e, Attribute.ATTACK_DAMAGE, "beast_damage",
                 num("events.beast-awakening.damage-multiplier", 1.5, "events.super-hell.beast-damage-multiplier", 2.0));
         scale(e, Attribute.MOVEMENT_SPEED, "beast_speed",
-                num("events.beast-awakening.speed-multiplier", 1.2, "events.super-hell.speed-multiplier", 1.3));
+                num("events.beast-awakening.speed-multiplier", 1.2, "events.super-hell.speed-multiplier", 1.25));
         AttributeInstance hp = e.getAttribute(Attribute.MAX_HEALTH);
         if (hp != null) e.setHealth(hp.getValue());
     }

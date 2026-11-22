@@ -241,7 +241,7 @@ public final class AdminGui implements Listener {
                 case "back" -> Bukkit.getScheduler().runTask(plugin, () -> openMain(p));
                 case "roll" -> {
                     p.closeInventory();
-                    plugin.events().roll();
+                    plugin.events().rollWithCountdown();
                 }
                 case "stop" -> {
                     p.closeInventory();

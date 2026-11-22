@@ -65,7 +65,7 @@ public final class SoulCommand implements TabExecutor {
         if (admin(s)) {
             plugin.msg().send(s, "<white>/sbadmin <gray>- admin menu (events + revive)");
             plugin.msg().send(s, "<white>/sbroadcast [-t] [-q] <message>");
-            plugin.msg().send(s, "<white>/sb event <roll|set <id> [hours]|stop|list>");
+            plugin.msg().send(s, "<white>/sb event <roll|set <id> [time]|next <id|clear>|stop|list>");
             plugin.msg().send(s, "<white>/sb revive|eliminate|reset <player>");
             plugin.msg().send(s, "<white>/sb givebeacon [player] [amount]");
             plugin.msg().send(s, "<white>/sb ritual <info|cancel>");
@@ -118,7 +118,29 @@ public final class SoulCommand implements TabExecutor {
             return;
         }
         switch (args[1].toLowerCase(Locale.ROOT)) {
-            case "roll" -> em.roll();
+            case "roll" -> em.rollWithCountdown();
+            case "next" -> {
+                if (args.length < 3) {
+                    SoulEvent q = em.queued();
+                    msg.send(sender, q == null
+                            ? "<gray>No event queued. Usage: /sb event next <id|clear>"
+                            : "<gray>Queued as the next scheduled event: " + q.color + q.display);
+                    return;
+                }
+                if (args[2].equalsIgnoreCase("clear")) {
+                    em.setQueued(null);
+                    msg.send(sender, "<gray>Queue cleared.");
+                    return;
+                }
+                SoulEvent q = SoulEvent.byId(args[2]);
+                if (q == null) {
+                    msg.send(sender, "<red>Unknown event. Use /sb event list.");
+                    return;
+                }
+                em.setQueued(q);
+                msg.send(sender, "<green>The next scheduled event will be " + q.color + q.display + "<green>. <gray>(next event in "
+                        + Msg.clock(em.nextRollSeconds()) + ")");
+            }
             case "stop" -> {
                 em.stop();
                 msg.send(sender, "<gray>Event stopped. The next one starts after a full interval.");
@@ -278,15 +300,17 @@ public final class SoulCommand implements TabExecutor {
             switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "status", "revive", "eliminate", "reset", "givebeacon" ->
                         Bukkit.getOnlinePlayers().forEach(p -> out.add(p.getName()));
-                case "event" -> { if (admin(sender)) out.addAll(List.of("roll", "set", "stop", "list")); }
+                case "event" -> { if (admin(sender)) out.addAll(List.of("roll", "set", "next", "stop", "list")); }
                 case "time" -> { if (admin(sender)) out.addAll(List.of("interval", "duration")); }
                 case "ritual" -> out.addAll(List.of("info", "cancel"));
                 default -> { }
             }
         } else if (args.length == 3 && args[0].equalsIgnoreCase("time") && admin(sender)) {
             out.addAll(List.of("0", "30m", "1h", "6h", "12h", "1d"));
-        } else if (args.length == 3 && args[0].equalsIgnoreCase("event") && args[1].equalsIgnoreCase("set")) {
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("event")
+                && (args[1].equalsIgnoreCase("set") || args[1].equalsIgnoreCase("next"))) {
             for (SoulEvent e : SoulEvent.values()) out.add(e.id);
+            if (args[1].equalsIgnoreCase("next")) out.add("clear");
         }
         String last = args[args.length - 1].toLowerCase(Locale.ROOT);
         out.removeIf(s -> !s.toLowerCase(Locale.ROOT).startsWith(last));

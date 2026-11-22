@@ -48,7 +48,10 @@ events:
   # Chance that a roll gives a BLESSING (good event) instead of a curse.
   good-event-chance: 0.3
   # Chance per roll for SUPER HELL (rare, every curse at once). 0 = only via /sb event set super_hell
-  super-hell-chance: 0.05
+  super-hell-chance: 0.08
+  # Suspense countdown (seconds) before a scheduled event starts. 0 = no countdown.
+  # Super Hell is announced by name during the countdown, other events stay a surprise.
+  warning-seconds: 10
   # Event ids to exclude from the rotation, e.g. [the_silence, no_escape, super_hell]
   disabled: []
 
@@ -95,9 +98,9 @@ events:
     damage-multiplier: 3.0    # mobs deal 3x (Blood Moon: 2x)
     hunger-multiplier: 5.0    # hunger 5x (Hunger Games: 3x)
     hearts: 2                 # everyone loses 2 hearts (Soul Drain: 1)
-    health-multiplier: 3.0    # beast mobs: 3x health
+    health-multiplier: 2.5    # beast mobs: 2.5x health
     beast-damage-multiplier: 2.0
-    speed-multiplier: 1.3
-    bonus-spawn-chance: 0.75  # 75% of natural mobs get a second buffed twin
+    speed-multiplier: 1.25
+    bonus-spawn-chance: 0.6   # 60% of natural mobs get a second buffed twin
     fragile-attempts: 60
     lightning-chance: 0.04    # per player per second
