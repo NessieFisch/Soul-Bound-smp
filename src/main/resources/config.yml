@@ -24,6 +24,90 @@ revive-beacon:
       "N": NETHER_STAR
       "O": OBSIDIAN
 
+heavenly-seal:
+  # false = no crafting recipe (admins can still /sb giveseal).
+  craftable: true
+  # Item the seal looks like (it is identified by a hidden tag, not by material).
+  material: NETHER_STAR
+  # Sneak + right-click is required, so nobody gets banned by an accidental click.
+  require-sneak: true
+  # Ticks between the seal landing and the ban/kick (the target is frozen meanwhile).
+  ban-delay-ticks: 100
+  recipe:
+    shape: ["NTN", "DAD", "NTN"]
+    ingredients:
+      "N": NETHER_STAR
+      "T": TOTEM_OF_UNDYING
+      "D": DIAMOND_BLOCK
+      "A": ENCHANTED_GOLDEN_APPLE
+
+# ------------------------------------------------------------------
+#  LEGENDARY WEAPONS
+#  craftable:        false = no crafting recipe (admins can still /sb legendary give)
+#  max-crafted:      how many can ever be forged on the server (0 = unlimited).
+#                    Reset with /sb legendary reset <id> if one is lost for good.
+#  cooldown-seconds: right-click power cooldown (ignored for the Voidpiercer)
+# ------------------------------------------------------------------
+legendary:
+  weapons:
+    god_mace:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 20
+      recipe:
+        shape: ["NHN", "DMD", "NEN"]
+        ingredients:
+          "N": NETHER_STAR
+          "H": HEAVY_CORE
+          "D": DIAMOND_BLOCK
+          "M": MACE
+          "E": ENCHANTED_GOLDEN_APPLE
+    dawnbreaker:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 12
+      recipe:
+        shape: ["GNG", "DSD", "GTG"]
+        ingredients:
+          "G": GOLD_BLOCK
+          "N": NETHER_STAR
+          "D": DIAMOND_BLOCK
+          "S": NETHERITE_SWORD
+          "T": TOTEM_OF_UNDYING
+    soul_reaper:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 25
+      recipe:
+        shape: ["WNW", "THT", "DDD"]
+        ingredients:
+          "W": WITHER_SKELETON_SKULL
+          "N": NETHER_STAR
+          "T": TOTEM_OF_UNDYING
+          "H": NETHERITE_HOE
+          "D": DIAMOND_BLOCK
+    voidpiercer:
+      craftable: true
+      max-crafted: 1
+      recipe:
+        shape: ["ENE", "DBD", "ENE"]
+        ingredients:
+          "E": ENDER_EYE
+          "N": NETHER_STAR
+          "D": DIAMOND_BLOCK
+          "B": BOW
+    titan_wrath:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 45
+      recipe:
+        shape: ["DND", "TAT", "DND"]
+        ingredients:
+          "D": DIAMOND_BLOCK
+          "N": NETHERITE_BLOCK
+          "T": TOTEM_OF_UNDYING
+          "A": NETHERITE_AXE
+
 ritual:
   # How long the ritual lasts once started.
   duration-seconds: 600

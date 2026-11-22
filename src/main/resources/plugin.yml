@@ -25,3 +25,6 @@ permissions:
   soulbound.bypass:
     description: Not affected by elimination (for staff / testing)
     default: false
+  soulbound.seal.immune:
+    description: Cannot be sealed with a Heavenly Seal
+    default: false

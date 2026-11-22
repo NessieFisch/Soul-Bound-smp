@@ -439,6 +439,15 @@ public final class RitualManager {
         return true;
     }
 
+    /** Ends the active ritual quietly (no penalty, beacon stays) if it targets this player, e.g. they were sealed. */
+    public boolean cancelIfTarget(UUID id) {
+        Ritual r = active;
+        if (r == null || !r.target.equals(id)) return false;
+        finish(r);
+        plugin.data().save();
+        return true;
+    }
+
     private void finish(Ritual r) {
         if (r.secondTask != null) r.secondTask.cancel();
         if (r.fxTask != null) r.fxTask.cancel();

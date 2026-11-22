@@ -10,6 +10,9 @@ public final class SoulboundPlugin extends JavaPlugin {
     private DataManager data;
     private Msg msg;
     private ReviveBeacon beacon;
+    private HeavenlySeal seal;
+    private LegendaryManager legendary;
+    private LegendaryAbilities abilities;
     private RitualManager rituals;
     private EventManager events;
     private AdminGui adminGui;
@@ -22,12 +25,20 @@ public final class SoulboundPlugin extends JavaPlugin {
         data.load();
         beacon = new ReviveBeacon(this);
         beacon.registerRecipe();
+        seal = new HeavenlySeal(this);
+        seal.registerRecipe();
+        legendary = new LegendaryManager(this);
+        legendary.registerRecipes();
+        abilities = new LegendaryAbilities(this);
+        abilities.start();
         rituals = new RitualManager(this);
         events = new EventManager(this);
 
         PlayerListener playerListener = new PlayerListener(this);
         register(playerListener);
         register(new RitualListener(this));
+        register(new SealListener(this));
+        register(new LegendaryListener(this));
         register(new EventListener(this));
         adminGui = new AdminGui(this);
         register(adminGui);
@@ -70,6 +81,9 @@ public final class SoulboundPlugin extends JavaPlugin {
         if (rituals != null) rituals.shutdown();
         if (events != null) events.shutdown();
         if (beacon != null) beacon.unregisterRecipe();
+        if (seal != null) seal.unregisterRecipe();
+        if (abilities != null) abilities.shutdown();
+        if (legendary != null) legendary.unregisterRecipes();
         if (data != null) data.save();
     }
 
@@ -81,6 +95,8 @@ public final class SoulboundPlugin extends JavaPlugin {
         reloadConfig();
         msg.reload();
         beacon.registerRecipe();
+        seal.registerRecipe();
+        legendary.registerRecipes();
     }
 
     /** Permanently bans a player by name using the vanilla ban command. */
@@ -95,6 +111,9 @@ public final class SoulboundPlugin extends JavaPlugin {
     public DataManager data() { return data; }
     public Msg msg() { return msg; }
     public ReviveBeacon beacon() { return beacon; }
+    public HeavenlySeal seal() { return seal; }
+    public LegendaryManager legendary() { return legendary; }
+    public LegendaryAbilities abilities() { return abilities; }
     public RitualManager rituals() { return rituals; }
     public EventManager events() { return events; }
     public AdminGui adminGui() { return adminGui; }

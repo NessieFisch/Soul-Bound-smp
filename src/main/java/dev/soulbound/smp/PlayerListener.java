@@ -53,6 +53,8 @@ public final class PlayerListener implements Listener {
         Player p = e.getPlayer();
         PlayerRecord r = plugin.data().record(p);
         plugin.beacon().discover(p);
+        plugin.seal().discover(p);
+        plugin.legendary().discover(p);
         plugin.rituals().onJoin(p);
         plugin.events().onJoin(p);
 
