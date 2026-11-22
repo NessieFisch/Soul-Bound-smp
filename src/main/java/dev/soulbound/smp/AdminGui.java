@@ -38,8 +38,8 @@ public final class AdminGui implements Listener {
         public Inventory getInventory() { return inv; }
     }
 
-    private static final int[] EVENT_SLOTS = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29};
-    private static final int HELL_SLOT = 31;
+    private static final int HELL_SLOT = 49;
+    private static final int BACK_SLOT = 45;
 
     private final SoulboundPlugin plugin;
     private final NamespacedKey actionKey;
@@ -82,6 +82,27 @@ public final class AdminGui implements Listener {
             case SWIFT_WINDS -> Material.FEATHER;
             case ANCIENT_HASTE -> Material.GOLDEN_PICKAXE;
             case IRON_SKIN -> Material.IRON_CHESTPLATE;
+            case PHANTOM_HUNT -> Material.PHANTOM_MEMBRANE;
+            case DIZZY_SPELLS -> Material.PUFFERFISH;
+            case BUTTERFINGERS -> Material.SLIME_BALL;
+            case BRITTLE_BONES -> Material.BONE;
+            case ACID_RAIN -> Material.FERMENTED_SPIDER_EYE;
+            case MOONWALK -> Material.RABBIT_FOOT;
+            case MINERS_FORTUNE -> Material.DIAMOND_PICKAXE;
+            case GROWING_SEASON -> Material.WHEAT;
+            case PEACE_PACT -> Material.WHITE_BANNER;
+            case GUARDIAN_ANGEL -> Material.GOLDEN_APPLE;
+            case CATS_EYES -> Material.GOLDEN_CARROT;
+            case SHRINK_RAY -> Material.AMETHYST_SHARD;
+            case HEAVY_BOOTS -> Material.IRON_BOOTS;
+            case SPOILED_FOOD -> Material.SPIDER_EYE;
+            case SPOTLIGHT -> Material.GLOW_INK_SAC;
+            case TIRED_ARMS -> Material.COBWEB;
+            case FLAMEWARD -> Material.MAGMA_CREAM;
+            case TIDECALLER -> Material.HEART_OF_THE_SEA;
+            case WARRIORS_SPIRIT -> Material.IRON_SWORD;
+            case LUCKY_STREAK -> Material.FISHING_ROD;
+            case MAGNETIC_PULL -> Material.LODESTONE;
             case SUPER_HELL -> Material.WITHER_SKELETON_SKULL;
         };
     }
@@ -138,14 +159,14 @@ public final class AdminGui implements Listener {
 
     public void openEvents(Player p) {
         Holder h = new Holder(Type.EVENTS);
-        Inventory inv = Bukkit.createInventory(h, 45, Component.text("Choose an event", NamedTextColor.DARK_PURPLE));
+        Inventory inv = Bukkit.createInventory(h, 54, Component.text("Choose an event", NamedTextColor.DARK_PURPLE));
         h.inv = inv;
         SoulEvent cur = plugin.events().current();
         int next = 0;
         for (SoulEvent e : SoulEvent.values()) {
             int slot;
             if (e == SoulEvent.SUPER_HELL) slot = HELL_SLOT;
-            else if (next < EVENT_SLOTS.length) slot = EVENT_SLOTS[next++];
+            else if (next < 45) slot = next++;
             else continue;
             String label = switch (e.category) {
                 case GOOD -> "<green>Blessing";
@@ -160,7 +181,7 @@ public final class AdminGui implements Listener {
                     "<gray>" + plugin.events().describe(e),
                     e == cur ? "<green>Currently active" : time));
         }
-        inv.setItem(40, item(Material.ARROW, "<gray>Back", false, "back"));
+        inv.setItem(BACK_SLOT, item(Material.ARROW, "<gray>Back", false, "back"));
         p.openInventory(inv);
     }
 

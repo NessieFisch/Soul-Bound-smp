@@ -48,7 +48,7 @@ events:
   # Chance that a roll gives a BLESSING (good event) instead of a curse.
   good-event-chance: 0.3
   # Chance per roll for SUPER HELL (rare, every curse at once). 0 = only via /sb event set super_hell
-  super-hell-chance: 0.08
+  super-hell-chance: 0.05
   # Suspense countdown (seconds) before a scheduled event starts. 0 = no countdown.
   # Super Hell is announced by name during the countdown, other events stay a surprise.
   warning-seconds: 10
@@ -92,15 +92,59 @@ events:
   # ---- SUPER HELL: ALL curses at once, turned up, plus a thunderstorm with lightning.
   super-hell:
     duration-minutes: 30
-    include-silence: true     # also hides chat
+    include-silence: false    # true = Super Hell also hides chat
     no-elimination: true      # dying in Super Hell does NOT eliminate you - you just respawn
     respawn-delay-ticks: 20
-    damage-multiplier: 3.0    # mobs deal 3x (Blood Moon: 2x)
-    hunger-multiplier: 5.0    # hunger 5x (Hunger Games: 3x)
+    damage-multiplier: 2.5    # mobs deal 2.5x (Blood Moon: 2x)
+    hunger-multiplier: 4.0    # hunger 4x (Hunger Games: 3x)
     hearts: 2                 # everyone loses 2 hearts (Soul Drain: 1)
-    health-multiplier: 2.5    # beast mobs: 2.5x health
-    beast-damage-multiplier: 2.0
-    speed-multiplier: 1.25
-    bonus-spawn-chance: 0.6   # 60% of natural mobs get a second buffed twin
-    fragile-attempts: 60
-    lightning-chance: 0.04    # per player per second
+    health-multiplier: 2.0    # beast mobs: 2x health
+    beast-damage-multiplier: 1.5
+    speed-multiplier: 1.15
+    bonus-spawn-chance: 0.4   # 40% of natural mobs get a second buffed twin
+    fragile-attempts: 40
+    lightning-chance: 0.025   # per player per second
+    # curses NOT included in Super Hell (event ids). Remove one to add it to Super Hell.
+    excluded: [acid_rain, butterfingers, phantom_hunt, dizzy_spells, heavy_boots, spoiled_food, spotlight, tired_arms]
+
+  # ---- more curses
+  phantom-hunt:
+    max-per-player: 2
+  dizzy-spells:
+    chance-per-second: 0.015  # per player (about once a minute)
+    seconds: 8                # how long the nausea lasts
+  butterfingers:
+    chance-per-second: 0.015  # per player (about once a minute)
+  brittle-bones:
+    fall-damage-multiplier: 3.0
+  acid-rain:
+    damage: 0.5               # every 2 seconds under open sky (2.0 = one heart)
+
+  # ---- more blessings
+  moonwalk:
+    jump-amplifier: 2         # Jump Boost III (+ Slow Falling)
+  miners-fortune:
+    multiplier: 2             # ores drop x2
+  growing-season:
+    attempts-per-player: 150  # higher = crops grow faster
+  guardian-angel:
+    amplifier: 1              # Absorption II = 4 extra hearts, topped up every minute
+  shrink-ray:
+    scale: 0.5                # player size
+
+  # ---- even more curses
+  heavy-boots:
+    amplifier: 0              # Slowness I
+  spoiled-food:
+    hunger-seconds: 8         # Hunger effect after eating
+  tired-arms:
+    amplifier: 0              # Mining Fatigue I
+
+  # ---- even more blessings
+  warriors-spirit:
+    amplifier: 0              # Strength I
+  lucky-streak:
+    amplifier: 2              # Luck III
+  magnetic-pull:
+    radius: 6.0
+    speed: 0.35

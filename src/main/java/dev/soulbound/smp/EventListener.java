@@ -2,7 +2,16 @@ package dev.soulbound.smp;
 
 import io.papermc.paper.event.player.AsyncChatEvent;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.block.Block;
+import org.bukkit.enchantments.Enchantment;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.player.PlayerItemConsumeEvent;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.entity.Enemy;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -26,6 +35,7 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
@@ -125,6 +135,50 @@ public final class EventListener implements Listener {
     public void onXp(PlayerExpChangeEvent e) {
         if (!active(SoulEvent.WISDOM_OF_THE_DEAD)) return;
         e.setAmount((int) Math.ceil(e.getAmount() * plugin.events().xpMultiplier()));
+    }
+
+    // ---- Brittle Bones (curse): fall damage is multiplied
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onFall(EntityDamageEvent e) {
+        if (!(e.getEntity() instanceof Player) || e.getCause() != EntityDamageEvent.DamageCause.FALL) return;
+        if (!active(SoulEvent.BRITTLE_BONES)) return;
+        e.setDamage(e.getDamage() * plugin.getConfig().getDouble("events.brittle-bones.fall-damage-multiplier", 3.0));
+    }
+
+    // ---- Miner's Fortune (blessing): ores drop extra
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onOre(BlockBreakEvent e) {
+        if (!active(SoulEvent.MINERS_FORTUNE)) return;
+        Block b = e.getBlock();
+        if (!b.getType().name().endsWith("_ORE")) return;
+        Player p = e.getPlayer();
+        if (p.getGameMode() != GameMode.SURVIVAL && p.getGameMode() != GameMode.ADVENTURE) return;
+        ItemStack tool = p.getInventory().getItemInMainHand();
+        if (tool.containsEnchantment(Enchantment.SILK_TOUCH)) return; // no ore-block duplication
+        int extra = Math.max(1, plugin.getConfig().getInt("events.miners-fortune.multiplier", 2)) - 1;
+        Collection<ItemStack> drops = b.getDrops(tool, p);
+        if (drops.isEmpty()) return;
+        Location at = b.getLocation().add(0.5, 0.5, 0.5);
+        for (int i = 0; i < extra; i++) {
+            for (ItemStack d : drops) b.getWorld().dropItemNaturally(at, d.clone());
+        }
+    }
+
+    // ---- Peace Pact (blessing): no natural hostile spawns
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPeaceSpawn(CreatureSpawnEvent e) {
+        if (!active(SoulEvent.PEACE_PACT) || !(e.getEntity() instanceof Enemy)) return;
+        SpawnReason r = e.getSpawnReason();
+        if (r == SpawnReason.NATURAL || r == SpawnReason.REINFORCEMENTS || r == SpawnReason.PATROL) e.setCancelled(true);
+    }
+
+    // ---- Spoiled Food (curse): eating makes you hungry
+    @EventHandler(ignoreCancelled = true)
+    public void onEat(PlayerItemConsumeEvent e) {
+        if (!active(SoulEvent.SPOILED_FOOD) || !e.getItem().getType().isEdible()) return;
+        int seconds = Math.max(1, plugin.getConfig().getInt("events.spoiled-food.hunger-seconds", 8));
+        e.getPlayer().addPotionEffect(new PotionEffect(PotionEffectType.HUNGER, seconds * 20, 0, false, true, true));
+        plugin.msg().actionBar(e.getPlayer(), "<dark_green>Spoiled food... <gray>that didn't taste right.");
     }
 
     // ---- The Silence

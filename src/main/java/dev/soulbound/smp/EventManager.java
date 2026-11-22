@@ -8,19 +8,26 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
+import org.bukkit.Tag;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.Ageable;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.Item;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Phantom;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,8 +48,14 @@ public final class EventManager {
             Material.CHISELED_STONE_BRICKS, Material.INFESTED_CHISELED_STONE_BRICKS,
             Material.DEEPSLATE, Material.INFESTED_DEEPSLATE);
 
+    /** Curses that Super Hell does NOT include unless you edit events.super-hell.excluded. */
+    private static final List<String> DEFAULT_HELL_EXCLUDED = List.of(
+            "acid_rain", "butterfingers", "phantom_hunt", "dizzy_spells",
+            "heavy_boots", "spoiled_food", "spotlight", "tired_arms");
+
     private final SoulboundPlugin plugin;
     private final NamespacedKey drainKey;
+    private final NamespacedKey scaleKey;
     private final BossBar bar = BossBar.bossBar(Component.empty(), 1f, BossBar.Color.WHITE, BossBar.Overlay.PROGRESS);
     private final Map<UUID, Float> lastExhaustion = new HashMap<>();
 
@@ -64,6 +77,7 @@ public final class EventManager {
     public EventManager(SoulboundPlugin plugin) {
         this.plugin = plugin;
         this.drainKey = new NamespacedKey(plugin, "soul_drain");
+        this.scaleKey = new NamespacedKey(plugin, "event_scale");
     }
 
     private FileConfiguration cfg() { return plugin.getConfig(); }
@@ -156,7 +170,10 @@ public final class EventManager {
     public boolean isActive(SoulEvent e) {
         if (current == e) return true;
         if (current != SoulEvent.SUPER_HELL || e.category != SoulEvent.Category.BAD) return false;
-        return e != SoulEvent.THE_SILENCE || cfg().getBoolean("events.super-hell.include-silence", true);
+        if (e == SoulEvent.THE_SILENCE && !cfg().getBoolean("events.super-hell.include-silence", false)) return false;
+        List<String> excluded = cfg().isList("events.super-hell.excluded")
+                ? cfg().getStringList("events.super-hell.excluded") : DEFAULT_HELL_EXCLUDED;
+        return !excluded.contains(e.id);
     }
 
     public long remainingSeconds() { return current == null ? 0 : Math.max(0, (endsAt - System.currentTimeMillis()) / 1000); }
@@ -170,11 +187,11 @@ public final class EventManager {
     }
 
     public double damageMultiplier() {
-        return num("events.blood-moon.damage-multiplier", 2.0, "events.super-hell.damage-multiplier", 3.0);
+        return num("events.blood-moon.damage-multiplier", 2.0, "events.super-hell.damage-multiplier", 2.5);
     }
 
     private double hungerMultiplier() {
-        return Math.max(1.0, num("events.hunger-games.multiplier", 3.0, "events.super-hell.hunger-multiplier", 5.0));
+        return Math.max(1.0, num("events.hunger-games.multiplier", 3.0, "events.super-hell.hunger-multiplier", 4.0));
     }
 
     private int hearts() {
@@ -183,7 +200,7 @@ public final class EventManager {
     }
 
     public double beastBonusChance() {
-        return num("events.beast-awakening.bonus-spawn-chance", 0.25, "events.super-hell.bonus-spawn-chance", 0.6);
+        return num("events.beast-awakening.bonus-spawn-chance", 0.25, "events.super-hell.bonus-spawn-chance", 0.4);
     }
 
     public int bountifulMultiplier() { return Math.max(1, cfg().getInt("events.bountiful-drops.multiplier", 2)); }
@@ -237,7 +254,7 @@ public final class EventManager {
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
 
         if (!disabled.contains(SoulEvent.SUPER_HELL) && current != SoulEvent.SUPER_HELL && previous != SoulEvent.SUPER_HELL
-                && rnd.nextDouble() < cfg().getDouble("events.super-hell-chance", 0.08)) {
+                && rnd.nextDouble() < cfg().getDouble("events.super-hell-chance", 0.05)) {
             return SoulEvent.SUPER_HELL;
         }
 
@@ -355,6 +372,7 @@ public final class EventManager {
         current = null;
         previous = ended;
         lastExhaustion.clear();
+        if (ended == SoulEvent.ACID_RAIN || ended == SoulEvent.SUPER_HELL) clearWeather();
         for (Player p : Bukkit.getOnlinePlayers()) {
             p.hideBossBar(bar);
             syncPlayer(p);
@@ -397,6 +415,8 @@ public final class EventManager {
             case HUNGER_GAMES -> "Hunger drains " + Msg.num(c.getDouble("events.hunger-games.multiplier", 3.0)) + "x faster";
             case BOUNTIFUL_DROPS -> "Mobs drop " + bountifulMultiplier() + "x loot";
             case WISDOM_OF_THE_DEAD -> "Experience is multiplied by " + Msg.num(xpMultiplier());
+            case BRITTLE_BONES -> "Fall damage is " + Msg.num(c.getDouble("events.brittle-bones.fall-damage-multiplier", 3.0)) + "x";
+            case MINERS_FORTUNE -> "Ores drop " + Math.max(1, c.getInt("events.miners-fortune.multiplier", 2)) + "x";
             case SUPER_HELL -> "Every curse at once, and worse";
             default -> e.defaultDescription;
         };
@@ -430,6 +450,10 @@ public final class EventManager {
                 int every = Math.max(5, cfg().getInt("events.fragile-world.interval-ticks", 40));
                 if (ticks % every == 0) fragile();
             }
+            if (ticks % 100 == 0 && isActive(SoulEvent.PHANTOM_HUNT)) phantoms();
+            if (ticks % 40 == 0 && isActive(SoulEvent.ACID_RAIN)) acidRain();
+            if (ticks % 40 == 0 && current == SoulEvent.GROWING_SEASON) growth();
+            if (ticks % 5 == 0 && current == SoulEvent.MAGNETIC_PULL) magnet();
         }
         if (ticks % 20 == 0) {
             countdownTick();
@@ -438,6 +462,9 @@ public final class EventManager {
                 updateBar();
                 if (isActive(SoulEvent.ETERNAL_NIGHT)) night();
                 blessings();
+                curseEffects();
+                if (isActive(SoulEvent.BUTTERFINGERS)) butterfingers();
+                if (isActive(SoulEvent.DIZZY_SPELLS)) dizzy();
                 if (isHell()) {
                     hellfire();
                     milestones();
@@ -482,7 +509,7 @@ public final class EventManager {
     private void fragile() {
         int radius = Math.max(2, cfg().getInt("events.fragile-world.radius", 12));
         int attempts = Math.max(1, isHell()
-                ? cfg().getInt("events.super-hell.fragile-attempts", 60)
+                ? cfg().getInt("events.super-hell.fragile-attempts", 40)
                 : cfg().getInt("events.fragile-world.attempts-per-player", 25));
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         for (Player p : Bukkit.getOnlinePlayers()) {
@@ -506,16 +533,168 @@ public final class EventManager {
 
     private void blessings() {
         FileConfiguration c = cfg();
-        if (current == SoulEvent.SOUL_SURGE) effect(PotionEffectType.REGENERATION, c.getInt("events.soul-surge.amplifier", 1));
-        if (current == SoulEvent.SWIFT_WINDS) effect(PotionEffectType.SPEED, c.getInt("events.swift-winds.amplifier", 1));
-        if (current == SoulEvent.ANCIENT_HASTE) effect(PotionEffectType.HASTE, c.getInt("events.ancient-haste.amplifier", 1));
-        if (current == SoulEvent.IRON_SKIN) effect(PotionEffectType.RESISTANCE, c.getInt("events.iron-skin.amplifier", 0));
+        if (current == SoulEvent.SOUL_SURGE) effect(PotionEffectType.REGENERATION, c.getInt("events.soul-surge.amplifier", 1), 100);
+        if (current == SoulEvent.SWIFT_WINDS) effect(PotionEffectType.SPEED, c.getInt("events.swift-winds.amplifier", 1), 100);
+        if (current == SoulEvent.ANCIENT_HASTE) effect(PotionEffectType.HASTE, c.getInt("events.ancient-haste.amplifier", 1), 100);
+        if (current == SoulEvent.IRON_SKIN) effect(PotionEffectType.RESISTANCE, c.getInt("events.iron-skin.amplifier", 0), 100);
+        if (current == SoulEvent.MOONWALK) {
+            effect(PotionEffectType.JUMP_BOOST, c.getInt("events.moonwalk.jump-amplifier", 2), 100);
+            effect(PotionEffectType.SLOW_FALLING, 0, 100);
+        }
+        if (current == SoulEvent.FLAMEWARD) effect(PotionEffectType.FIRE_RESISTANCE, 0, 100);
+        if (current == SoulEvent.TIDECALLER) {
+            effect(PotionEffectType.WATER_BREATHING, 0, 100);
+            effect(PotionEffectType.DOLPHINS_GRACE, 0, 100);
+        }
+        if (current == SoulEvent.WARRIORS_SPIRIT) effect(PotionEffectType.STRENGTH, c.getInt("events.warriors-spirit.amplifier", 0), 100);
+        if (current == SoulEvent.LUCKY_STREAK) effect(PotionEffectType.LUCK, c.getInt("events.lucky-streak.amplifier", 2), 100);
+        if (current == SoulEvent.CATS_EYES) effect(PotionEffectType.NIGHT_VISION, 0, 400); // long enough to never flicker
+        if (current == SoulEvent.GUARDIAN_ANGEL) absorption();
     }
 
-    private void effect(PotionEffectType type, int amplifier) {
+    /** Mild potion-based curses (they also run inside Super Hell if not excluded). */
+    private void curseEffects() {
+        FileConfiguration c = cfg();
+        if (isActive(SoulEvent.HEAVY_BOOTS)) effect(PotionEffectType.SLOWNESS, c.getInt("events.heavy-boots.amplifier", 0), 100);
+        if (isActive(SoulEvent.SPOTLIGHT)) effect(PotionEffectType.GLOWING, 0, 100);
+        if (isActive(SoulEvent.TIRED_ARMS)) effect(PotionEffectType.MINING_FATIGUE, c.getInt("events.tired-arms.amplifier", 0), 100);
+    }
+
+    /** Magnetic Pull: dropped items drift toward nearby players. */
+    private void magnet() {
+        double r = Math.max(2.0, cfg().getDouble("events.magnetic-pull.radius", 6.0));
+        double speed = Math.max(0.1, cfg().getDouble("events.magnetic-pull.speed", 0.35));
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (!inPlay(p)) continue;
+            Vector target = p.getLocation().add(0, 0.5, 0).toVector();
+            for (Entity en : p.getNearbyEntities(r, r, r)) {
+                if (!(en instanceof Item it) || it.getPickupDelay() > 0) continue;
+                Vector dir = target.clone().subtract(it.getLocation().toVector());
+                if (dir.lengthSquared() < 0.25) continue;
+                it.setVelocity(dir.normalize().multiply(speed));
+            }
+        }
+    }
+
+    private boolean inPlay(Player p) {
+        GameMode gm = p.getGameMode();
+        return (gm == GameMode.SURVIVAL || gm == GameMode.ADVENTURE) && !p.isDead();
+    }
+
+    private void effect(PotionEffectType type, int amplifier, int duration) {
         for (Player p : Bukkit.getOnlinePlayers()) {
             if (p.getGameMode() == GameMode.SPECTATOR) continue;
-            p.addPotionEffect(new PotionEffect(type, 100, Math.max(0, amplifier), true, false, true));
+            p.addPotionEffect(new PotionEffect(type, duration, Math.max(0, amplifier), true, false, true));
+        }
+    }
+
+    /** Tops up absorption hearts about once a minute. */
+    private void absorption() {
+        int amp = Math.max(0, cfg().getInt("events.guardian-angel.amplifier", 1));
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (!inPlay(p)) continue;
+            PotionEffect cur = p.getPotionEffect(PotionEffectType.ABSORPTION);
+            if (cur == null || cur.getDuration() < 100) {
+                p.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 1200, amp, true, false, true));
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ new curses
+
+    /** Phantom Hunt: phantoms dive at every player (max N near each). */
+    private void phantoms() {
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        int max = Math.max(1, cfg().getInt("events.phantom-hunt.max-per-player", 2));
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (!inPlay(p)) continue;
+            World w = p.getWorld();
+            if (w.getEnvironment() != World.Environment.NORMAL) continue;
+            int count = 0;
+            for (Entity en : p.getNearbyEntities(40, 40, 40)) if (en instanceof Phantom) count++;
+            if (count >= max) continue;
+            Location l = p.getLocation().add(rnd.nextInt(-10, 11), rnd.nextInt(10, 16), rnd.nextInt(-10, 11));
+            if (!w.isChunkLoaded(l.getBlockX() >> 4, l.getBlockZ() >> 4) || !l.getBlock().isEmpty()) continue;
+            w.spawn(l, Phantom.class);
+        }
+    }
+
+    /** Dizzy Spells: random waves of nausea (harmless, just chaotic on camera). */
+    private void dizzy() {
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        double chance = cfg().getDouble("events.dizzy-spells.chance-per-second", 0.015);
+        int seconds = Math.max(1, cfg().getInt("events.dizzy-spells.seconds", 8));
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (!inPlay(p) || rnd.nextDouble() >= chance) continue;
+            p.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, seconds * 20, 0, false, true, true));
+            plugin.msg().actionBar(p, "<light_purple>Dizzy spell...");
+        }
+    }
+
+    /** Butterfingers: now and then you drop the stack in your hand. */
+    private void butterfingers() {
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        double chance = cfg().getDouble("events.butterfingers.chance-per-second", 0.015);
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (!inPlay(p)) continue;
+            ItemStack hand = p.getInventory().getItemInMainHand();
+            if (hand.getType().isAir() || rnd.nextDouble() >= chance) continue;
+            Item it = p.getWorld().dropItem(p.getEyeLocation(), hand.clone());
+            it.setVelocity(p.getLocation().getDirection().multiply(0.25));
+            it.setPickupDelay(40);
+            p.getInventory().setItemInMainHand(new ItemStack(Material.AIR));
+            plugin.msg().actionBar(p, "<gold>Butterfingers! <gray>You dropped your item.");
+        }
+    }
+
+    /** Acid Rain: forced rain, and anyone standing under open sky gets burned. */
+    private void acidRain() {
+        double dmg = cfg().getDouble("events.acid-rain.damage", 0.5);
+        for (World w : Bukkit.getWorlds()) {
+            if (w.getEnvironment() == World.Environment.NORMAL && !w.hasStorm()) w.setStorm(true);
+        }
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (!inPlay(p)) continue;
+            World w = p.getWorld();
+            if (w.getEnvironment() != World.Environment.NORMAL) continue;
+            Location eye = p.getEyeLocation();
+            if (eye.getBlockY() <= w.getHighestBlockYAt(eye)) continue; // sheltered
+            p.damage(dmg);
+            p.playSound(p.getLocation(), Sound.BLOCK_FIRE_EXTINGUISH, 0.6f, 1.2f);
+            plugin.msg().actionBar(p, "<dark_green>Acid rain burns! <gray>Find cover.");
+        }
+    }
+
+    private void clearWeather() {
+        for (World w : Bukkit.getWorlds()) {
+            if (w.getEnvironment() != World.Environment.NORMAL) continue;
+            w.setStorm(false);
+            w.setThundering(false);
+        }
+    }
+
+    // ------------------------------------------------------------------ Growing Season
+
+    private void growth() {
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        int attempts = Math.max(1, cfg().getInt("events.growing-season.attempts-per-player", 150));
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.getGameMode() == GameMode.SPECTATOR) continue;
+            World w = p.getWorld();
+            int px = p.getLocation().getBlockX(), py = p.getLocation().getBlockY(), pz = p.getLocation().getBlockZ();
+            for (int i = 0; i < attempts; i++) {
+                int x = px + rnd.nextInt(-10, 11);
+                int y = py + rnd.nextInt(-4, 5);
+                int z = pz + rnd.nextInt(-10, 11);
+                if (y < w.getMinHeight() || y >= w.getMaxHeight() || !w.isChunkLoaded(x >> 4, z >> 4)) continue;
+                Block b = w.getBlockAt(x, y, z);
+                Material m = b.getType();
+                if (!(Tag.CROPS.isTagged(m) || m == Material.NETHER_WART || m == Material.SWEET_BERRY_BUSH || m == Material.COCOA)) continue;
+                if (!(b.getBlockData() instanceof Ageable a) || a.getAge() >= a.getMaximumAge()) continue;
+                a.setAge(a.getAge() + 1);
+                b.setBlockData(a, false);
+                w.spawnParticle(Particle.HAPPY_VILLAGER, b.getLocation().add(0.5, 0.5, 0.5), 4, 0.3, 0.3, 0.3, 0);
+            }
         }
     }
 
@@ -557,7 +736,7 @@ public final class EventManager {
 
     /** Permanent thunderstorm + lightning striking around every player. */
     private void hellfire() {
-        double chance = cfg().getDouble("events.super-hell.lightning-chance", 0.04);
+        double chance = cfg().getDouble("events.super-hell.lightning-chance", 0.025);
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         for (World w : Bukkit.getWorlds()) {
             if (w.getEnvironment() != World.Environment.NORMAL) continue;
@@ -579,17 +758,28 @@ public final class EventManager {
 
     // ------------------------------------------------------------------ Soul Drain
 
-    /** Makes sure the player's max health matches the current event (call on join / respawn / revive). */
+    /** Makes sure the player's max health / size match the current event (call on join / respawn / revive). */
     public void syncPlayer(Player p) {
         AttributeInstance inst = p.getAttribute(Attribute.MAX_HEALTH);
-        if (inst == null) return;
-        for (AttributeModifier m : new ArrayList<>(inst.getModifiers())) {
-            if (drainKey.equals(m.getKey())) inst.removeModifier(m);
+        if (inst != null) {
+            for (AttributeModifier m : new ArrayList<>(inst.getModifiers())) {
+                if (drainKey.equals(m.getKey())) inst.removeModifier(m);
+            }
+            if (isActive(SoulEvent.SOUL_DRAIN)) {
+                inst.addModifier(new AttributeModifier(drainKey, -2.0 * hearts(), AttributeModifier.Operation.ADD_NUMBER));
+                double max = inst.getValue();
+                if (p.getHealth() > max) p.setHealth(Math.max(1.0, max));
+            }
         }
-        if (isActive(SoulEvent.SOUL_DRAIN)) {
-            inst.addModifier(new AttributeModifier(drainKey, -2.0 * hearts(), AttributeModifier.Operation.ADD_NUMBER));
-            double max = inst.getValue();
-            if (p.getHealth() > max) p.setHealth(Math.max(1.0, max));
+        AttributeInstance scale = p.getAttribute(Attribute.SCALE);
+        if (scale != null) {
+            for (AttributeModifier m : new ArrayList<>(scale.getModifiers())) {
+                if (scaleKey.equals(m.getKey())) scale.removeModifier(m);
+            }
+            if (current == SoulEvent.SHRINK_RAY) {
+                double target = Math.max(0.1, Math.min(4.0, cfg().getDouble("events.shrink-ray.scale", 0.5)));
+                scale.addModifier(new AttributeModifier(scaleKey, target - 1.0, AttributeModifier.Operation.ADD_SCALAR));
+            }
         }
     }
 
@@ -597,11 +787,11 @@ public final class EventManager {
 
     public void buff(LivingEntity e) {
         scale(e, Attribute.MAX_HEALTH, "beast_health",
-                num("events.beast-awakening.health-multiplier", 2.0, "events.super-hell.health-multiplier", 2.5));
+                num("events.beast-awakening.health-multiplier", 2.0, "events.super-hell.health-multiplier", 2.0));
         scale(e, Attribute.ATTACK_DAMAGE, "beast_damage",
-                num("events.beast-awakening.damage-multiplier", 1.5, "events.super-hell.beast-damage-multiplier", 2.0));
+                num("events.beast-awakening.damage-multiplier", 1.5, "events.super-hell.beast-damage-multiplier", 1.5));
         scale(e, Attribute.MOVEMENT_SPEED, "beast_speed",
-                num("events.beast-awakening.speed-multiplier", 1.2, "events.super-hell.speed-multiplier", 1.25));
+                num("events.beast-awakening.speed-multiplier", 1.2, "events.super-hell.speed-multiplier", 1.15));
         AttributeInstance hp = e.getAttribute(Attribute.MAX_HEALTH);
         if (hp != null) e.setHealth(hp.getValue());
     }
