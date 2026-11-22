@@ -140,6 +140,11 @@ public final class EventManager {
 
     public boolean isHell() { return current == SoulEvent.SUPER_HELL; }
 
+    /** During Super Hell deaths do not eliminate anyone - players just respawn normally. */
+    public boolean deathsAreSafe() {
+        return isHell() && cfg().getBoolean("events.super-hell.no-elimination", true);
+    }
+
     /** True if this event's effect is running. SUPER HELL switches on every curse at once. */
     public boolean isActive(SoulEvent e) {
         if (current == e) return true;
@@ -166,7 +171,7 @@ public final class EventManager {
     }
 
     private int hearts() {
-        int h = isHell() ? cfg().getInt("events.super-hell.hearts", 3) : cfg().getInt("events.soul-drain.hearts", 1);
+        int h = isHell() ? cfg().getInt("events.super-hell.hearts", 2) : cfg().getInt("events.soul-drain.hearts", 1);
         return Math.max(1, Math.min(9, h));
     }
 

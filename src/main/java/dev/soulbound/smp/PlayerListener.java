@@ -91,6 +91,16 @@ public final class PlayerListener implements Listener {
         Player p = e.getEntity();
         if (p.hasPermission("soulbound.bypass")) return;
 
+        // SUPER HELL: dying costs nothing, you just respawn normally.
+        if (plugin.events().deathsAreSafe()) {
+            plugin.msg().send(p, "<red>You died during <dark_red><bold>SUPER HELL</bold><red>. <gray>No elimination - you respawn normally.");
+            long hellDelay = plugin.getConfig().getLong("events.super-hell.respawn-delay-ticks", 20L);
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (p.isOnline() && p.isDead()) p.spigot().respawn();
+            }, hellDelay);
+            return;
+        }
+
         PlayerRecord r = plugin.data().record(p);
         boolean finalDeath = r.reviveUsed;
         boolean ban = finalDeath && plugin.getConfig().getBoolean("hardcore.ban-on-final-death", true);
@@ -131,7 +141,10 @@ public final class PlayerListener implements Listener {
             }, 1L);
         } else {
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (p.isOnline()) plugin.events().syncPlayer(p);
+                if (!p.isOnline()) return;
+                plugin.events().syncPlayer(p);
+                // a hardcore world would drop them into spectator; they are not eliminated, so play on
+                if (p.getGameMode() == GameMode.SPECTATOR) p.setGameMode(GameMode.SURVIVAL);
             }, 1L);
         }
     }

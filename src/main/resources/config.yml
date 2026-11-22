@@ -90,9 +90,11 @@ events:
   super-hell:
     duration-minutes: 30
     include-silence: true     # also hides chat
+    no-elimination: true      # dying in Super Hell does NOT eliminate you - you just respawn
+    respawn-delay-ticks: 20
     damage-multiplier: 3.0    # mobs deal 3x (Blood Moon: 2x)
     hunger-multiplier: 5.0    # hunger 5x (Hunger Games: 3x)
-    hearts: 3                 # everyone loses 3 hearts (Soul Drain: 1)
+    hearts: 2                 # everyone loses 2 hearts (Soul Drain: 1)
     health-multiplier: 3.0    # beast mobs: 3x health
     beast-damage-multiplier: 2.0
     speed-multiplier: 1.3
