@@ -6,6 +6,7 @@ import org.bukkit.Material;
 import org.bukkit.entity.Enemy;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.Event;
@@ -16,13 +17,17 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
+import org.bukkit.event.player.PlayerExpChangeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
@@ -48,7 +53,7 @@ public final class EventListener implements Listener {
         Entity src = e.getDamager();
         if (src instanceof Projectile proj && proj.getShooter() instanceof Entity shooter) src = shooter;
         if (src instanceof Enemy) {
-            double mult = plugin.getConfig().getDouble("events.blood-moon.damage-multiplier", 2.0);
+            double mult = plugin.events().damageMultiplier();
             e.setDamage(e.getDamage() * mult);
         }
     }
@@ -94,12 +99,32 @@ public final class EventListener implements Listener {
 
         plugin.events().buff(e.getEntity());
 
-        double chance = plugin.getConfig().getDouble("events.beast-awakening.bonus-spawn-chance", 0.25);
+        double chance = plugin.events().beastBonusChance();
         if (e.getSpawnReason() == SpawnReason.NATURAL && ThreadLocalRandom.current().nextDouble() < chance) {
             // spawned with reason CUSTOM, so it won't trigger this handler again
             Entity extra = e.getLocation().getWorld().spawnEntity(e.getLocation(), e.getEntityType());
             if (extra instanceof LivingEntity le) plugin.events().buff(le);
         }
+    }
+
+    // ---- Bountiful Drops (blessing): mobs drop extra loot
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onMobDeath(EntityDeathEvent e) {
+        if (!active(SoulEvent.BOUNTIFUL_DROPS) || !(e.getEntity() instanceof Mob)) return;
+        int extra = plugin.events().bountifulMultiplier() - 1;
+        if (extra <= 0 || e.getDrops().isEmpty()) return;
+        List<ItemStack> copies = new ArrayList<>();
+        for (int i = 0; i < extra; i++) {
+            for (ItemStack it : e.getDrops()) copies.add(it.clone());
+        }
+        e.getDrops().addAll(copies);
+    }
+
+    // ---- Wisdom of the Dead (blessing): more experience
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onXp(PlayerExpChangeEvent e) {
+        if (!active(SoulEvent.WISDOM_OF_THE_DEAD)) return;
+        e.setAmount((int) Math.ceil(e.getAmount() * plugin.events().xpMultiplier()));
     }
 
     // ---- The Silence

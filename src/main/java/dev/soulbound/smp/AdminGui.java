@@ -38,7 +38,8 @@ public final class AdminGui implements Listener {
         public Inventory getInventory() { return inv; }
     }
 
-    private static final int[] EVENT_SLOTS = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21};
+    private static final int[] EVENT_SLOTS = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25, 28, 29};
+    private static final int HELL_SLOT = 31;
 
     private final SoulboundPlugin plugin;
     private final NamespacedKey actionKey;
@@ -75,6 +76,13 @@ public final class AdminGui implements Listener {
             case BEAST_AWAKENING -> Material.ZOMBIE_HEAD;
             case BROKEN_BONDS -> Material.SHIELD;
             case THE_SILENCE -> Material.SCULK_SENSOR;
+            case SOUL_SURGE -> Material.GHAST_TEAR;
+            case BOUNTIFUL_DROPS -> Material.CHEST;
+            case WISDOM_OF_THE_DEAD -> Material.EXPERIENCE_BOTTLE;
+            case SWIFT_WINDS -> Material.FEATHER;
+            case ANCIENT_HASTE -> Material.GOLDEN_PICKAXE;
+            case IRON_SKIN -> Material.IRON_CHESTPLATE;
+            case SUPER_HELL -> Material.WITHER_SKELETON_SKULL;
         };
     }
 
@@ -130,17 +138,29 @@ public final class AdminGui implements Listener {
 
     public void openEvents(Player p) {
         Holder h = new Holder(Type.EVENTS);
-        Inventory inv = Bukkit.createInventory(h, 27, Component.text("Choose an event", NamedTextColor.DARK_PURPLE));
+        Inventory inv = Bukkit.createInventory(h, 45, Component.text("Choose an event", NamedTextColor.DARK_PURPLE));
         h.inv = inv;
         SoulEvent cur = plugin.events().current();
-        SoulEvent[] all = SoulEvent.values();
-        for (int i = 0; i < all.length && i < EVENT_SLOTS.length; i++) {
-            SoulEvent e = all[i];
-            inv.setItem(EVENT_SLOTS[i], item(iconFor(e), e.color + "<bold>" + e.display, e == cur, "event:" + e.id,
+        int next = 0;
+        for (SoulEvent e : SoulEvent.values()) {
+            int slot;
+            if (e == SoulEvent.SUPER_HELL) slot = HELL_SLOT;
+            else if (next < EVENT_SLOTS.length) slot = EVENT_SLOTS[next++];
+            else continue;
+            String label = switch (e.category) {
+                case GOOD -> "<green>Blessing";
+                case BAD -> "<red>Curse";
+                case HELL -> "<dark_red><bold>HELL - every curse at once";
+            };
+            String time = e == SoulEvent.SUPER_HELL
+                    ? "<dark_gray>Lasts " + Msg.clock(plugin.events().durationFor(e) / 1000) + " only"
+                    : "<dark_gray>Click to start now";
+            inv.setItem(slot, item(iconFor(e), e.color + "<bold>" + e.display, e == cur, "event:" + e.id,
+                    label,
                     "<gray>" + plugin.events().describe(e),
-                    e == cur ? "<green>Currently active" : "<dark_gray>Click to start now"));
+                    e == cur ? "<green>Currently active" : time));
         }
-        inv.setItem(22, item(Material.ARROW, "<gray>Back", false, "back"));
+        inv.setItem(40, item(Material.ARROW, "<gray>Back", false, "back"));
         p.openInventory(inv);
     }
 

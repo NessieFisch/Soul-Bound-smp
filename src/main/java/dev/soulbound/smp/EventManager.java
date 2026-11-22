@@ -4,6 +4,7 @@ import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
+import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
@@ -16,6 +17,8 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
@@ -25,7 +28,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
-/** Runs the rotating world events (a new random one every X hours) and the effects that need ticking. */
+/** Runs the rotating world events (blessings, curses and the rare SUPER HELL) and the effects that need ticking. */
 public final class EventManager {
 
     private static final Map<Material, Material> INFEST = Map.of(
@@ -59,7 +62,7 @@ public final class EventManager {
 
     private FileConfiguration cfg() { return plugin.getConfig(); }
 
-    // ---- timing settings (config: events.interval-hours / events.duration-hours)
+    // ------------------------------------------------------------------ timing settings
 
     public double intervalHours() { return Math.max(1.0 / 60.0, cfg().getDouble("events.interval-hours", 12)); }
 
@@ -75,10 +78,17 @@ public final class EventManager {
         return Math.min(ms, intervalMillis());
     }
 
+    /** Super Hell always uses its own short duration (default 30 minutes). */
+    public long durationFor(SoulEvent e) {
+        if (e == SoulEvent.SUPER_HELL) {
+            return (long) (Math.max(1.0, cfg().getDouble("events.super-hell.duration-minutes", 30)) * 60_000L);
+        }
+        return durationMillis();
+    }
+
     public void setIntervalHours(double hours) {
         cfg().set("events.interval-hours", Math.max(1.0 / 60.0, Math.round(hours * 1000) / 1000.0));
         plugin.saveConfig();
-        // Re-base the countdown to the new interval (unless an admin-forced event is running).
         if (startedAt > 0 && !(forced && current != null)) {
             nextRollAt = startedAt + intervalMillis();
             persist();
@@ -128,21 +138,67 @@ public final class EventManager {
 
     public SoulEvent current() { return current; }
 
-    public boolean isActive(SoulEvent e) { return current == e; }
+    public boolean isHell() { return current == SoulEvent.SUPER_HELL; }
+
+    /** True if this event's effect is running. SUPER HELL switches on every curse at once. */
+    public boolean isActive(SoulEvent e) {
+        if (current == e) return true;
+        if (current != SoulEvent.SUPER_HELL || e.category != SoulEvent.Category.BAD) return false;
+        return e != SoulEvent.THE_SILENCE || cfg().getBoolean("events.super-hell.include-silence", true);
+    }
 
     public long remainingSeconds() { return current == null ? 0 : Math.max(0, (endsAt - System.currentTimeMillis()) / 1000); }
 
     public boolean enabled() { return cfg().getBoolean("events.enabled", true); }
+
+    // ------------------------------------------------------------------ strengths (Super Hell turns everything up)
+
+    private double num(String path, double def, String hellPath, double hellDef) {
+        return isHell() ? cfg().getDouble(hellPath, hellDef) : cfg().getDouble(path, def);
+    }
+
+    public double damageMultiplier() {
+        return num("events.blood-moon.damage-multiplier", 2.0, "events.super-hell.damage-multiplier", 3.0);
+    }
+
+    private double hungerMultiplier() {
+        return Math.max(1.0, num("events.hunger-games.multiplier", 3.0, "events.super-hell.hunger-multiplier", 5.0));
+    }
+
+    private int hearts() {
+        int h = isHell() ? cfg().getInt("events.super-hell.hearts", 3) : cfg().getInt("events.soul-drain.hearts", 1);
+        return Math.max(1, Math.min(9, h));
+    }
+
+    public double beastBonusChance() {
+        return num("events.beast-awakening.bonus-spawn-chance", 0.25, "events.super-hell.bonus-spawn-chance", 0.75);
+    }
+
+    public int bountifulMultiplier() { return Math.max(1, cfg().getInt("events.bountiful-drops.multiplier", 2)); }
+
+    public double xpMultiplier() { return Math.max(1.0, cfg().getDouble("events.wisdom-of-the-dead.multiplier", 2.0)); }
 
     // ------------------------------------------------------------------ scheduling
 
     private void checkSchedule() {
         long now = System.currentTimeMillis();
         if (current != null && now >= endsAt) {
-            plugin.msg().broadcast(current.color + "<bold>" + current.display + "</bold><gray> has ended.");
+            if (isHell()) plugin.msg().broadcast("<green><bold>SUPER HELL HAS ENDED.</bold><gray> You survived.");
+            else plugin.msg().broadcast(current.color + "<bold>" + current.display + "</bold><gray> has ended.");
             endCurrent();
         }
         if (enabled() && now >= nextRollAt) roll();
+    }
+
+    private List<SoulEvent> candidates(List<SoulEvent> disabled, SoulEvent.Category cat, boolean excludeRecent) {
+        List<SoulEvent> out = new ArrayList<>();
+        for (SoulEvent e : SoulEvent.values()) {
+            if (e == SoulEvent.SUPER_HELL || disabled.contains(e)) continue;
+            if (cat != null && e.category != cat) continue;
+            if (excludeRecent && (e == current || e == previous)) continue;
+            out.add(e);
+        }
+        return out;
     }
 
     public void roll() {
@@ -151,19 +207,26 @@ public final class EventManager {
             SoulEvent e = SoulEvent.byId(id);
             if (e != null) disabled.add(e);
         }
-        List<SoulEvent> pool = new ArrayList<>();
-        for (SoulEvent e : SoulEvent.values()) {
-            if (!disabled.contains(e) && e != current && e != previous) pool.add(e);
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+
+        // rare: SUPER HELL (30 min), then the normal schedule continues
+        if (!disabled.contains(SoulEvent.SUPER_HELL) && current != SoulEvent.SUPER_HELL && previous != SoulEvent.SUPER_HELL
+                && rnd.nextDouble() < cfg().getDouble("events.super-hell-chance", 0.05)) {
+            startEvent(SoulEvent.SUPER_HELL, durationFor(SoulEvent.SUPER_HELL), true);
+            return;
         }
-        if (pool.isEmpty()) {
-            for (SoulEvent e : SoulEvent.values()) if (!disabled.contains(e)) pool.add(e);
-        }
+
+        SoulEvent.Category wanted = rnd.nextDouble() < cfg().getDouble("events.good-event-chance", 0.3)
+                ? SoulEvent.Category.GOOD : SoulEvent.Category.BAD;
+        List<SoulEvent> pool = candidates(disabled, wanted, true);
+        if (pool.isEmpty()) pool = candidates(disabled, wanted, false);
+        if (pool.isEmpty()) pool = candidates(disabled, null, false);
         if (pool.isEmpty()) return;
-        startEvent(pool.get(ThreadLocalRandom.current().nextInt(pool.size())), durationMillis(), false);
+        startEvent(pool.get(rnd.nextInt(pool.size())), durationMillis(), false);
     }
 
-    /** Starts an event with the configured duration; the next one follows the normal schedule. */
-    public void setEvent(SoulEvent e) { startEvent(e, durationMillis(), false); }
+    /** Starts an event with its normal duration (Super Hell: 30 min, then a normal event follows). */
+    public void setEvent(SoulEvent e) { startEvent(e, durationFor(e), e == SoulEvent.SUPER_HELL); }
 
     /** Starts an event with a custom duration; the next random event begins when it ends. */
     public void setEvent(SoulEvent e, long durationMillis) { startEvent(e, durationMillis, true); }
@@ -184,14 +247,24 @@ public final class EventManager {
             syncPlayer(p);
         }
         updateBar();
-        if (e == SoulEvent.ETERNAL_NIGHT) night();
+        if (isActive(SoulEvent.ETERNAL_NIGHT)) night();
 
         String desc = describe(e);
-        plugin.msg().broadcast(e.color + "<bold>☠ EVENT: " + e.display.toUpperCase() + "</bold><gray> - " + desc
-                + " <dark_gray>(" + Msg.clock(durationMillis / 1000) + ")");
+        long secs = durationMillis / 1000;
+        boolean hell = e == SoulEvent.SUPER_HELL;
+        boolean good = e.category == SoulEvent.Category.GOOD;
+        if (hell) {
+            plugin.msg().broadcast("<dark_red><bold>☠☠☠ SUPER HELL HAS BEGUN ☠☠☠</bold>");
+            plugin.msg().broadcast("<red>" + desc + ". <gray>It lasts only <white>" + Msg.clock(secs) + "<gray>. <red>Survive.");
+        } else {
+            plugin.msg().broadcast(e.color + "<bold>" + (good ? "✦ BLESSING: " : "☠ EVENT: ") + e.display.toUpperCase()
+                    + "</bold><gray> - " + desc + " <dark_gray>(" + Msg.clock(secs) + ")");
+        }
         plugin.msg().titleAll(e.color + "<bold>" + e.display.toUpperCase() + "</bold>", "<gray>" + desc);
         if (cfg().getBoolean("events.announce-sound", true)) {
-            for (Player p : Bukkit.getOnlinePlayers()) p.playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 0.6f, 0.6f);
+            Sound snd = hell ? Sound.ENTITY_WITHER_SPAWN : good ? Sound.UI_TOAST_CHALLENGE_COMPLETE : Sound.ENTITY_ENDER_DRAGON_GROWL;
+            float pitch = hell ? 0.5f : good ? 1.0f : 0.6f;
+            for (Player p : Bukkit.getOnlinePlayers()) p.playSound(p.getLocation(), snd, hell ? 1.0f : 0.6f, pitch);
         }
     }
 
@@ -236,10 +309,13 @@ public final class EventManager {
         return switch (e) {
             case BLOOD_MOON -> "Mobs deal " + Msg.num(c.getDouble("events.blood-moon.damage-multiplier", 2.0)) + "x damage";
             case SOUL_DRAIN -> {
-                int h = hearts();
+                int h = Math.max(1, Math.min(9, c.getInt("events.soul-drain.hearts", 1)));
                 yield "Every player loses " + h + (h == 1 ? " heart" : " hearts");
             }
             case HUNGER_GAMES -> "Hunger drains " + Msg.num(c.getDouble("events.hunger-games.multiplier", 3.0)) + "x faster";
+            case BOUNTIFUL_DROPS -> "Mobs drop " + bountifulMultiplier() + "x loot";
+            case WISDOM_OF_THE_DEAD -> "Experience is multiplied by " + Msg.num(xpMultiplier());
+            case SUPER_HELL -> "Every curse at once, and worse";
             default -> e.defaultDescription;
         };
     }
@@ -248,6 +324,7 @@ public final class EventManager {
         if (current == null) return;
         long left = Math.max(0, endsAt - System.currentTimeMillis());
         bar.color(current.barColor);
+        bar.overlay(isHell() ? BossBar.Overlay.NOTCHED_10 : BossBar.Overlay.PROGRESS);
         bar.progress(Math.max(0f, Math.min(1f, totalMillis <= 0 ? 0f : (float) left / (float) totalMillis)));
         bar.name(plugin.msg().parse(current.color + "<bold>" + current.display + "</bold> <gray>- " + describe(current)
                 + " <dark_gray>| <white>" + Msg.clock(left / 1000)));
@@ -265,21 +342,20 @@ public final class EventManager {
     private void tick() {
         ticks++;
         if (current != null) {
-            switch (current) {
-                case HUNGER_GAMES -> hunger();
-                case BROKEN_BONDS -> { if (ticks % 5 == 0) shields(); }
-                case FRAGILE_WORLD -> {
-                    int every = Math.max(5, cfg().getInt("events.fragile-world.interval-ticks", 40));
-                    if (ticks % every == 0) fragile();
-                }
-                default -> { }
+            if (isActive(SoulEvent.HUNGER_GAMES)) hunger();
+            if (isActive(SoulEvent.BROKEN_BONDS) && ticks % 5 == 0) shields();
+            if (isActive(SoulEvent.FRAGILE_WORLD)) {
+                int every = Math.max(5, cfg().getInt("events.fragile-world.interval-ticks", 40));
+                if (ticks % every == 0) fragile();
             }
         }
         if (ticks % 20 == 0) {
             checkSchedule();
             if (current != null) {
                 updateBar();
-                if (current == SoulEvent.ETERNAL_NIGHT) night();
+                if (isActive(SoulEvent.ETERNAL_NIGHT)) night();
+                blessings();
+                if (isHell()) hellfire();
             }
         }
     }
@@ -299,7 +375,7 @@ public final class EventManager {
 
     /** Multiplies hunger exhaustion by tracking how much each player gained since last tick. */
     private void hunger() {
-        double mult = Math.max(1.0, cfg().getDouble("events.hunger-games.multiplier", 3.0));
+        double mult = hungerMultiplier();
         for (Player p : Bukkit.getOnlinePlayers()) {
             GameMode gm = p.getGameMode();
             if (gm != GameMode.SURVIVAL && gm != GameMode.ADVENTURE) {
@@ -319,7 +395,9 @@ public final class EventManager {
 
     private void fragile() {
         int radius = Math.max(2, cfg().getInt("events.fragile-world.radius", 12));
-        int attempts = Math.max(1, cfg().getInt("events.fragile-world.attempts-per-player", 25));
+        int attempts = Math.max(1, isHell()
+                ? cfg().getInt("events.super-hell.fragile-attempts", 60)
+                : cfg().getInt("events.fragile-world.attempts-per-player", 25));
         ThreadLocalRandom rnd = ThreadLocalRandom.current();
         for (Player p : Bukkit.getOnlinePlayers()) {
             if (p.getGameMode() == GameMode.SPECTATOR) continue;
@@ -338,9 +416,48 @@ public final class EventManager {
         }
     }
 
-    // ------------------------------------------------------------------ Soul Drain
+    // ------------------------------------------------------------------ blessings (potion-based)
 
-    private int hearts() { return Math.max(1, Math.min(9, cfg().getInt("events.soul-drain.hearts", 1))); }
+    private void blessings() {
+        FileConfiguration c = cfg();
+        if (current == SoulEvent.SOUL_SURGE) effect(PotionEffectType.REGENERATION, c.getInt("events.soul-surge.amplifier", 1));
+        if (current == SoulEvent.SWIFT_WINDS) effect(PotionEffectType.SPEED, c.getInt("events.swift-winds.amplifier", 1));
+        if (current == SoulEvent.ANCIENT_HASTE) effect(PotionEffectType.HASTE, c.getInt("events.ancient-haste.amplifier", 1));
+        if (current == SoulEvent.IRON_SKIN) effect(PotionEffectType.RESISTANCE, c.getInt("events.iron-skin.amplifier", 0));
+    }
+
+    private void effect(PotionEffectType type, int amplifier) {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.getGameMode() == GameMode.SPECTATOR) continue;
+            p.addPotionEffect(new PotionEffect(type, 100, Math.max(0, amplifier), true, false, true));
+        }
+    }
+
+    // ------------------------------------------------------------------ SUPER HELL extras
+
+    /** Permanent thunderstorm + lightning striking around every player. */
+    private void hellfire() {
+        double chance = cfg().getDouble("events.super-hell.lightning-chance", 0.04);
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        for (World w : Bukkit.getWorlds()) {
+            if (w.getEnvironment() != World.Environment.NORMAL) continue;
+            if (!w.hasStorm()) w.setStorm(true);
+            if (!w.isThundering()) w.setThundering(true);
+        }
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.getGameMode() == GameMode.SPECTATOR || p.isDead()) continue;
+            World w = p.getWorld();
+            if (w.getEnvironment() != World.Environment.NORMAL) continue;
+            if (rnd.nextDouble() >= chance) continue;
+            int x = p.getLocation().getBlockX() + rnd.nextInt(-8, 9);
+            int z = p.getLocation().getBlockZ() + rnd.nextInt(-8, 9);
+            if (!w.isChunkLoaded(x >> 4, z >> 4)) continue;
+            Location strike = w.getHighestBlockAt(x, z).getLocation().add(0.5, 1, 0.5);
+            w.strikeLightning(strike);
+        }
+    }
+
+    // ------------------------------------------------------------------ Soul Drain
 
     /** Makes sure the player's max health matches the current event (call on join / respawn / revive). */
     public void syncPlayer(Player p) {
@@ -349,7 +466,7 @@ public final class EventManager {
         for (AttributeModifier m : new ArrayList<>(inst.getModifiers())) {
             if (drainKey.equals(m.getKey())) inst.removeModifier(m);
         }
-        if (current == SoulEvent.SOUL_DRAIN) {
+        if (isActive(SoulEvent.SOUL_DRAIN)) {
             inst.addModifier(new AttributeModifier(drainKey, -2.0 * hearts(), AttributeModifier.Operation.ADD_NUMBER));
             double max = inst.getValue();
             if (p.getHealth() > max) p.setHealth(Math.max(1.0, max));
@@ -359,10 +476,12 @@ public final class EventManager {
     // ------------------------------------------------------------------ Beast Awakening
 
     public void buff(LivingEntity e) {
-        FileConfiguration c = cfg();
-        scale(e, Attribute.MAX_HEALTH, "beast_health", c.getDouble("events.beast-awakening.health-multiplier", 2.0));
-        scale(e, Attribute.ATTACK_DAMAGE, "beast_damage", c.getDouble("events.beast-awakening.damage-multiplier", 1.5));
-        scale(e, Attribute.MOVEMENT_SPEED, "beast_speed", c.getDouble("events.beast-awakening.speed-multiplier", 1.2));
+        scale(e, Attribute.MAX_HEALTH, "beast_health",
+                num("events.beast-awakening.health-multiplier", 2.0, "events.super-hell.health-multiplier", 3.0));
+        scale(e, Attribute.ATTACK_DAMAGE, "beast_damage",
+                num("events.beast-awakening.damage-multiplier", 1.5, "events.super-hell.beast-damage-multiplier", 2.0));
+        scale(e, Attribute.MOVEMENT_SPEED, "beast_speed",
+                num("events.beast-awakening.speed-multiplier", 1.2, "events.super-hell.speed-multiplier", 1.3));
         AttributeInstance hp = e.getAttribute(Attribute.MAX_HEALTH);
         if (hp != null) e.setHealth(hp.getValue());
     }

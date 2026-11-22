@@ -215,6 +215,7 @@ public final class SoulCommand implements TabExecutor {
             msg.send(sender, "<red>Usage: /sb reset <player>");
             return;
         }
+        boolean wasDead = r.eliminated || r.permanent;
         if (r.permanent) plugin.pardonPlayer(r.name);
         r.eliminated = false;
         r.permanent = false;
@@ -225,6 +226,10 @@ public final class SoulCommand implements TabExecutor {
         if (p != null) {
             p.setGameMode(GameMode.SURVIVAL);
             plugin.events().syncPlayer(p);
+        } else if (wasDead) {
+            // offline: make sure they come back in survival (not stuck in spectator) on next login
+            r.pendingRevive = true;
+            r.pendingLocation = r.deathLocation != null ? r.deathLocation : Bukkit.getWorlds().get(0).getSpawnLocation();
         }
         plugin.data().save();
         msg.send(sender, "<green>Reset " + Msg.esc(r.name) + ": alive, revive available.");
