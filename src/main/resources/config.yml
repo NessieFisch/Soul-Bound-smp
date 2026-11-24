@@ -46,9 +46,19 @@ heavenly-seal:
 #  craftable:        false = no crafting recipe (admins can still /sb legendary give)
 #  max-crafted:      how many can ever be forged on the server (0 = unlimited).
 #                    Reset with /sb legendary reset <id> if one is lost for good.
-#  cooldown-seconds: right-click power cooldown (ignored for the Voidpiercer)
+#  cooldown-seconds: right-click power cooldown (only for weapons that have a right-click power)
 # ------------------------------------------------------------------
 legendary:
+  # Visual effects. Turn individual ones off, or scale every particle count with intensity
+  # (0.5 = half as many particles, 2 = double) if you need to go easier on clients.
+  effects:
+    intensity: 1.0
+    aura: true          # orbiting lights + a signature effect around whoever holds a weapon
+    swing-arc: true     # a coloured slash trail on every swing
+    trails: true        # trails behind arrows, tridents, fireballs and leaping players
+    hit-effects: true   # a burst and chime on every melee hit
+    hud: true           # cooldown bar on the action bar while holding a weapon with a power
+    drop-beacons: true  # a pillar of light over dropped legendary weapons
   weapons:
     god_mace:
       craftable: true
@@ -107,6 +117,118 @@ legendary:
           "N": NETHERITE_BLOCK
           "T": TOTEM_OF_UNDYING
           "A": NETHERITE_AXE
+    stormcaller:
+      craftable: true
+      max-crafted: 1
+      recipe:
+        shape: ["LNL", "HTH", "LNL"]
+        ingredients:
+          "L": LIGHTNING_ROD
+          "N": NETHER_STAR
+          "H": HEART_OF_THE_SEA
+          "T": TRIDENT
+    hellfire_crossbow:
+      craftable: true
+      max-crafted: 1
+      recipe:
+        shape: ["BNB", "MCM", "BNB"]
+        ingredients:
+          "B": BLAZE_ROD
+          "N": NETHER_STAR
+          "M": MAGMA_BLOCK
+          "C": CROSSBOW
+    frostbrand:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 18
+      recipe:
+        shape: ["BNB", "TDT", "BNB"]
+        ingredients:
+          "B": BLUE_ICE
+          "N": NETHER_STAR
+          "T": TOTEM_OF_UNDYING
+          "D": DIAMOND_SWORD
+    shadowfang:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 10
+      recipe:
+        shape: ["CNC", "ESE", "CWC"]
+        ingredients:
+          "C": CRYING_OBSIDIAN
+          "N": NETHER_STAR
+          "E": ENDER_EYE
+          "S": NETHERITE_SWORD
+          "W": WITHER_SKELETON_SKULL
+    event_horizon:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 22
+      recipe:
+        shape: ["ONO", "ASA", "OCO"]
+        ingredients:
+          "O": OBSIDIAN
+          "N": NETHER_STAR
+          "A": AMETHYST_BLOCK
+          "S": NETHERITE_SHOVEL
+          "C": ECHO_SHARD
+    viper_fang:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 20
+      recipe:
+        shape: ["SNS", "PGP", "STS"]
+        ingredients:
+          "S": SPIDER_EYE
+          "N": NETHER_STAR
+          "P": POISONOUS_POTATO
+          "G": GOLDEN_SWORD
+          "T": TOTEM_OF_UNDYING
+    stargazer:
+      craftable: true
+      max-crafted: 1
+      recipe:
+        shape: ["SNS", "EBE", "SNS"]
+        ingredients:
+          "S": AMETHYST_SHARD
+          "N": NETHER_STAR
+          "E": SPYGLASS
+          "B": BOW
+    executioner:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 30
+      recipe:
+        shape: ["IWI", "TAT", "INI"]
+        ingredients:
+          "I": IRON_BLOCK
+          "W": WITHER_SKELETON_SKULL
+          "T": TOTEM_OF_UNDYING
+          "A": DIAMOND_AXE
+          "N": NETHER_STAR
+    infernal_scepter:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 8
+      recipe:
+        shape: ["MNM", "GRG", "MDM"]
+        ingredients:
+          "M": MAGMA_BLOCK
+          "N": NETHER_STAR
+          "G": GHAST_TEAR
+          "R": BLAZE_ROD
+          "D": DRAGON_BREATH
+    thunder_rod:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 15
+      recipe:
+        shape: ["CNC", "TLT", "CNC"]
+        ingredients:
+          "C": COPPER_BLOCK
+          "N": NETHER_STAR
+          "T": TOTEM_OF_UNDYING
+          "L": LIGHTNING_ROD
 
 ritual:
   # How long the ritual lasts once started.

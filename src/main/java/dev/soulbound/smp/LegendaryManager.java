@@ -49,19 +49,20 @@ public final class LegendaryManager {
     public ItemStack create(LegendaryWeapon w) {
         ItemStack it = new ItemStack(w.material);
         ItemMeta m = it.getItemMeta();
-        m.displayName(line(w.color + "<bold>" + w.display));
+        m.displayName(line(w.title()));
 
         List<Component> lore = new ArrayList<>();
-        lore.add(line("<dark_gray>Legendary weapon"));
+        lore.add(line(w.gradient("\u2726 LEGENDARY \u2726")));
         lore.add(line(""));
         if (w.active && w.power != null) {
-            lore.add(line("<gold>Power: <white>" + w.power + " <dark_gray>(Right-click, " + cooldownSeconds(w) + "s)"));
-            for (String s : w.powerLines) lore.add(line("<gray>" + s));
+            lore.add(line(w.color + "<bold>" + w.power + "</bold> <dark_gray>\u2022 <gray>Right-click <dark_gray>\u2022 <gray>"
+                    + cooldownSeconds(w) + "s cooldown"));
+            for (String s : w.powerLines) lore.add(line("<gray>  " + s));
             lore.add(line(""));
         }
         if (!w.passiveLines.isEmpty()) {
-            lore.add(line("<aqua>Passive:"));
-            for (String s : w.passiveLines) lore.add(line("<gray>- " + s));
+            lore.add(line("<aqua><bold>Passive</bold>"));
+            for (String s : w.passiveLines) lore.add(line("<dark_gray> \u25AA <gray>" + s));
             lore.add(line(""));
         }
         lore.add(line("<dark_gray>Unbreakable"));

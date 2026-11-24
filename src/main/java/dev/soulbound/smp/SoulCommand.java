@@ -71,7 +71,7 @@ public final class SoulCommand implements TabExecutor {
             plugin.msg().send(s, "<white>/sb revive|eliminate|reset <player>");
             plugin.msg().send(s, "<white>/sb givebeacon [player] [amount]");
             plugin.msg().send(s, "<white>/sb giveseal [player] [amount] <gray>- Heavenly Seal");
-            plugin.msg().send(s, "<white>/sb legendary <list|give <id> [player]|reset <id>> <gray>- legendary weapons");
+            plugin.msg().send(s, "<white>/sb legendary <list|give <id|all> [player]|reset <id>> <gray>- legendary weapons");
             plugin.msg().send(s, "<white>/sb ritual <info|cancel>");
             plugin.msg().send(s, "<white>/sb reload");
         }
@@ -303,14 +303,15 @@ public final class SoulCommand implements TabExecutor {
             case "list" -> {
                 for (LegendaryWeapon w : LegendaryWeapon.values()) {
                     int max = lm.maxCrafted(w);
-                    msg.send(sender, w.color + "<bold>" + w.display + "</bold><gray> - forged <white>" + lm.crafted(w)
+                    msg.send(sender, w.title() + "<gray> - forged <white>" + lm.crafted(w)
                             + "<gray>/<white>" + (max == 0 ? "unlimited" : String.valueOf(max)) + " <dark_gray>(" + w.id + ")");
                 }
             }
             case "give" -> {
+                boolean all = args.length > 2 && args[2].equalsIgnoreCase("all");
                 LegendaryWeapon w = args.length > 2 ? LegendaryWeapon.byId(args[2]) : null;
-                if (w == null) {
-                    msg.send(sender, "<red>Usage: /sb legendary give <id> [player]. <gray>Ids: /sb legendary list");
+                if (w == null && !all) {
+                    msg.send(sender, "<red>Usage: /sb legendary give <id|all> [player]. <gray>Ids: /sb legendary list");
                     return;
                 }
                 Player target = args.length > 3 ? Bukkit.getPlayerExact(args[3]) : (sender instanceof Player p ? p : null);
@@ -318,10 +319,13 @@ public final class SoulCommand implements TabExecutor {
                     msg.send(sender, "<red>Player not found.");
                     return;
                 }
-                for (ItemStack left : target.getInventory().addItem(lm.create(w)).values()) {
-                    target.getWorld().dropItemNaturally(target.getLocation(), left);
+                List<LegendaryWeapon> toGive = all ? List.of(LegendaryWeapon.values()) : List.of(w);
+                for (LegendaryWeapon g : toGive) {
+                    for (ItemStack left : target.getInventory().addItem(lm.create(g)).values()) {
+                        target.getWorld().dropItemNaturally(target.getLocation(), left);
+                    }
                 }
-                msg.send(sender, "<green>Gave " + w.display + " to " + Msg.esc(target.getName())
+                msg.send(sender, "<green>Gave " + (all ? "all legendary weapons" : w.display) + " to " + Msg.esc(target.getName())
                         + ". <gray>(Admin gifts do not count towards the forge limit.)");
             }
             case "reset" -> {
@@ -379,6 +383,7 @@ public final class SoulCommand implements TabExecutor {
         else if (args.length == 3 && args[0].equalsIgnoreCase("legendary")
                 && (args[1].equalsIgnoreCase("give") || args[1].equalsIgnoreCase("reset"))) {
             for (LegendaryWeapon w : LegendaryWeapon.values()) out.add(w.id);
+            if (args[1].equalsIgnoreCase("give")) out.add("all");
         } else if (args.length == 4 && args[0].equalsIgnoreCase("legendary") && args[1].equalsIgnoreCase("give")) {
             Bukkit.getOnlinePlayers().forEach(p -> out.add(p.getName()));
         }

@@ -1,26 +1,32 @@
 package dev.soulbound.smp;
 
 import org.bukkit.Bukkit;
-import org.bukkit.Sound;
 import org.bukkit.block.Block;
 import org.bukkit.entity.AbstractArrow;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Trident;
 import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.ItemSpawnEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.inventory.PrepareGrindstoneEvent;
 import org.bukkit.event.inventory.PrepareItemCraftEvent;
+import org.bukkit.event.player.PlayerAnimationEvent;
+import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.world.EntitiesLoadEvent;
 import org.bukkit.inventory.CraftingInventory;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.GrindstoneInventory;
@@ -64,11 +70,9 @@ public final class LegendaryListener implements Listener {
 
         HumanEntity who = e.getWhoClicked();
         plugin.msg().broadcast("<gold><bold>LEGENDARY FORGED!</bold> <white>" + Msg.esc(who.getName())
-                + "<gray> has forged " + w.color + "<bold>" + w.display + "</bold><gray>!");
-        plugin.msg().titleAll(w.color + "<bold>" + w.display, "<gray>has been forged by " + Msg.esc(who.getName()));
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            p.playSound(p.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1f, 1f);
-        }
+                + "<gray> has forged " + w.title() + "<gray>!");
+        plugin.msg().titleAll(w.title(), "<gray>has been forged by " + Msg.esc(who.getName()));
+        plugin.abilities().fx().forge(who.getLocation(), w);
     }
 
     /** Grindstones would strip the enchants off a legendary weapon. */
@@ -78,6 +82,12 @@ public final class LegendaryListener implements Listener {
         if (plugin.legendary().isLegendary(inv.getUpperItem()) || plugin.legendary().isLegendary(inv.getLowerItem())) {
             e.setResult(null);
         }
+    }
+
+    /** Blocky weapons (the Thunder Rod is a lightning rod) must never be placed in the world. */
+    @EventHandler(ignoreCancelled = true)
+    public void onPlace(BlockPlaceEvent e) {
+        if (plugin.legendary().isLegendary(e.getItemInHand())) e.setCancelled(true);
     }
 
     // ------------------------------------------------------------------ powers
@@ -98,6 +108,12 @@ public final class LegendaryListener implements Listener {
 
         e.setCancelled(true); // no tilling, stripping logs, etc.
         plugin.abilities().trigger(p, w);
+    }
+
+    /** Arm swings leave a coloured slash in the air. */
+    @EventHandler(ignoreCancelled = true)
+    public void onSwing(PlayerAnimationEvent e) {
+        if (e.getAnimationType() == PlayerAnimationType.ARM_SWING) plugin.abilities().onSwing(e.getPlayer());
     }
 
     // ------------------------------------------------------------------ passives
@@ -124,17 +140,30 @@ public final class LegendaryListener implements Listener {
         }
     }
 
+    // ------------------------------------------------------------------ projectiles
+
     @EventHandler(ignoreCancelled = true)
     public void onShoot(EntityShootBowEvent e) {
         if (!(e.getEntity() instanceof Player p)) return;
-        if (plugin.legendary().identify(e.getBow()) == LegendaryWeapon.VOIDPIERCER) {
-            plugin.abilities().onShoot(p, e);
+        LegendaryWeapon w = plugin.legendary().identify(e.getBow());
+        if (w != null) plugin.abilities().onShoot(p, w, e);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onLaunch(ProjectileLaunchEvent e) {
+        if (e.getEntity() instanceof Trident t && t.getShooter() instanceof Player p) {
+            plugin.abilities().onTridentLaunch(p, t);
         }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onProjectileHit(ProjectileHitEvent e) {
+        plugin.abilities().onProjectileHit(e);
     }
 
     // ------------------------------------------------------------------ dropped weapons
 
-    /** A dropped legendary can't burn, explode or despawn, and glows so it can be found. */
+    /** A dropped legendary can't burn, explode or despawn, and shines a pillar of light so it can be found. */
     @EventHandler(ignoreCancelled = true)
     public void onItemSpawn(ItemSpawnEvent e) {
         Item item = e.getEntity();
@@ -142,5 +171,16 @@ public final class LegendaryListener implements Listener {
         item.setInvulnerable(true);
         item.setUnlimitedLifetime(true);
         item.setGlowing(true);
+        plugin.abilities().trackDrop(item);
+    }
+
+    /** Re-adopt dropped legendaries when their chunk loads again. */
+    @EventHandler
+    public void onEntitiesLoad(EntitiesLoadEvent e) {
+        for (Entity en : e.getEntities()) {
+            if (en instanceof Item item && plugin.legendary().isLegendary(item.getItemStack())) {
+                plugin.abilities().trackDrop(item);
+            }
+        }
     }
 }
