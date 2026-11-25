@@ -1,0 +1,375 @@
+# ------------------------------------------------------------------
+#  SOULBOUND SMP
+# ------------------------------------------------------------------
+prefix: "<dark_gray>[<dark_purple>Soulbound<dark_gray>] <gray>"
+
+hardcore:
+  # A player who dies AFTER their one revive was used is permanently banned.
+  ban-on-final-death: true
+  # Ticks before the death screen is skipped and the player becomes a spectator.
+  auto-respawn-delay-ticks: 40
+  # Ticks between a final death and the ban (so they can see what happened).
+  ban-delay-ticks: 100
+  # Eliminated players spectate, but may only roam this many blocks from where
+  # they died (stops dead players scouting for the team / finding rituals). 0 = unlimited.
+  spectator-radius: 100
+
+revive-beacon:
+  recipe:
+    shape: ["DTD", "GNG", "OOO"]
+    ingredients:
+      "D": DIAMOND_BLOCK
+      "T": TOTEM_OF_UNDYING
+      "G": GOLD_BLOCK
+      "N": NETHER_STAR
+      "O": OBSIDIAN
+
+heavenly-seal:
+  # false = no crafting recipe (admins can still /sb giveseal).
+  craftable: true
+  # Item the seal looks like (it is identified by a hidden tag, not by material).
+  material: NETHER_STAR
+  # Sneak + right-click is required, so nobody gets banned by an accidental click.
+  require-sneak: true
+  # Ticks between the seal landing and the ban/kick (the target is frozen meanwhile).
+  ban-delay-ticks: 100
+  recipe:
+    shape: ["NTN", "DAD", "NTN"]
+    ingredients:
+      "N": NETHER_STAR
+      "T": TOTEM_OF_UNDYING
+      "D": DIAMOND_BLOCK
+      "A": ENCHANTED_GOLDEN_APPLE
+
+# ------------------------------------------------------------------
+#  LEGENDARY WEAPONS
+#  craftable:        false = no crafting recipe (admins can still /sb legendary give)
+#  max-crafted:      how many can ever be forged on the server (0 = unlimited).
+#                    Reset with /sb legendary reset <id> if one is lost for good.
+#  cooldown-seconds: power cooldown (only for items that have an activated power)
+# ------------------------------------------------------------------
+legendary:
+  # Visual effects. Turn individual ones off, or scale every particle count with intensity
+  # (0.5 = half as many particles, 2 = double) if you need to go easier on clients.
+  effects:
+    intensity: 1.0
+    aura: true          # orbiting lights + a signature effect around whoever holds a weapon
+    swing-arc: true     # a coloured slash trail on every swing
+    trails: true        # trails behind arrows, tridents, fireballs and leaping players
+    hit-effects: true   # a burst and chime on every melee hit
+    hud: true           # cooldown bar on the action bar while holding a weapon with a power
+    drop-beacons: true  # a pillar of light over dropped legendary weapons
+    solid: true         # real glowing beams, rings, bursts, crystals and bolts (block displays): far more visible than particles
+    particle-size: 1.6  # how much bigger coloured dust particles are drawn (1.0 = vanilla size)
+  # God Elytra flight and mace-smash tuning.
+  elytra:
+    max-speed: 3.0          # blocks per tick (3.0 = 60 blocks/second); lower it if chunk loading struggles
+    smash-damage-cap: 60.0  # cap on the bonus damage of a Sky Smash (mace hit while gliding)
+    rebound: true           # bounce upward after a Sky Smash so the dive can be repeated
+  weapons:
+    god_mace:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 20
+      recipe:
+        shape: ["NHN", "DMD", "NEN"]
+        ingredients:
+          "N": NETHER_STAR
+          "H": HEAVY_CORE
+          "D": DIAMOND_BLOCK
+          "M": MACE
+          "E": ENCHANTED_GOLDEN_APPLE
+    dawnbreaker:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 12
+      recipe:
+        shape: ["GNG", "DSD", "GTG"]
+        ingredients:
+          "G": GOLD_BLOCK
+          "N": NETHER_STAR
+          "D": DIAMOND_BLOCK
+          "S": NETHERITE_SWORD
+          "T": TOTEM_OF_UNDYING
+    soul_reaper:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 25
+      recipe:
+        shape: ["WNW", "THT", "DDD"]
+        ingredients:
+          "W": WITHER_SKELETON_SKULL
+          "N": NETHER_STAR
+          "T": TOTEM_OF_UNDYING
+          "H": NETHERITE_HOE
+          "D": DIAMOND_BLOCK
+    voidpiercer:
+      craftable: true
+      max-crafted: 1
+      recipe:
+        shape: ["ENE", "DBD", "ENE"]
+        ingredients:
+          "E": ENDER_EYE
+          "N": NETHER_STAR
+          "D": DIAMOND_BLOCK
+          "B": BOW
+    titan_wrath:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 45
+      recipe:
+        shape: ["DND", "TAT", "DND"]
+        ingredients:
+          "D": DIAMOND_BLOCK
+          "N": NETHERITE_BLOCK
+          "T": TOTEM_OF_UNDYING
+          "A": NETHERITE_AXE
+    stormcaller:
+      craftable: true
+      max-crafted: 1
+      recipe:
+        shape: ["LNL", "HTH", "LNL"]
+        ingredients:
+          "L": LIGHTNING_ROD
+          "N": NETHER_STAR
+          "H": HEART_OF_THE_SEA
+          "T": TRIDENT
+    hellfire_crossbow:
+      craftable: true
+      max-crafted: 1
+      recipe:
+        shape: ["BNB", "MCM", "BNB"]
+        ingredients:
+          "B": BLAZE_ROD
+          "N": NETHER_STAR
+          "M": MAGMA_BLOCK
+          "C": CROSSBOW
+    frostbrand:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 18
+      recipe:
+        shape: ["BNB", "TDT", "BNB"]
+        ingredients:
+          "B": BLUE_ICE
+          "N": NETHER_STAR
+          "T": TOTEM_OF_UNDYING
+          "D": DIAMOND_SWORD
+    shadowfang:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 10
+      recipe:
+        shape: ["CNC", "ESE", "CWC"]
+        ingredients:
+          "C": CRYING_OBSIDIAN
+          "N": NETHER_STAR
+          "E": ENDER_EYE
+          "S": NETHERITE_SWORD
+          "W": WITHER_SKELETON_SKULL
+    event_horizon:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 22
+      recipe:
+        shape: ["ONO", "ASA", "OCO"]
+        ingredients:
+          "O": OBSIDIAN
+          "N": NETHER_STAR
+          "A": AMETHYST_BLOCK
+          "S": NETHERITE_SHOVEL
+          "C": ECHO_SHARD
+    viper_fang:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 20
+      recipe:
+        shape: ["SNS", "PGP", "STS"]
+        ingredients:
+          "S": SPIDER_EYE
+          "N": NETHER_STAR
+          "P": POISONOUS_POTATO
+          "G": GOLDEN_SWORD
+          "T": TOTEM_OF_UNDYING
+    stargazer:
+      craftable: true
+      max-crafted: 1
+      recipe:
+        shape: ["SNS", "EBE", "SNS"]
+        ingredients:
+          "S": AMETHYST_SHARD
+          "N": NETHER_STAR
+          "E": SPYGLASS
+          "B": BOW
+    executioner:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 30
+      recipe:
+        shape: ["IWI", "TAT", "INI"]
+        ingredients:
+          "I": IRON_BLOCK
+          "W": WITHER_SKELETON_SKULL
+          "T": TOTEM_OF_UNDYING
+          "A": DIAMOND_AXE
+          "N": NETHER_STAR
+    infernal_scepter:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 8
+      recipe:
+        shape: ["MNM", "GRG", "MDM"]
+        ingredients:
+          "M": MAGMA_BLOCK
+          "N": NETHER_STAR
+          "G": GHAST_TEAR
+          "R": BLAZE_ROD
+          "D": DRAGON_BREATH
+    thunder_rod:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 15
+      recipe:
+        shape: ["CNC", "TLT", "CNC"]
+        ingredients:
+          "C": COPPER_BLOCK
+          "N": NETHER_STAR
+          "T": TOTEM_OF_UNDYING
+          "L": LIGHTNING_ROD
+    god_elytra:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 4
+      recipe:
+        shape: ["NFN", "PEP", "NTN"]
+        ingredients:
+          "N": NETHER_STAR
+          "F": FIREWORK_ROCKET
+          "P": PHANTOM_MEMBRANE
+          "E": ELYTRA
+          "T": TOTEM_OF_UNDYING
+
+ritual:
+  # How long the ritual lasts once started.
+  duration-seconds: 600
+  # The altar: a square platform made of this block directly UNDER the placed Revive Beacon.
+  platform-block: GOLD_BLOCK
+  # 1 = 3x3, 2 = 5x5 ...
+  platform-radius: 1
+  # Coordinates are announced to the whole server when the ritual begins.
+  broadcast-coordinates: true
+  # Re-announce coordinates + time left every N seconds (0 = never).
+  reminder-interval-seconds: 60
+  keep-chunk-loaded: true
+
+events:
+  enabled: true
+  # How often a new random event starts, in hours (decimals ok: 0.5 = 30 min).
+  interval-hours: 12
+  # How long each event lasts, in hours. 0 = until the next event starts.
+  # Can't be longer than interval-hours. In game: /sb time interval|duration <value>
+  duration-hours: 0
+  announce-sound: true
+  # Chance that a roll gives a BLESSING (good event) instead of a curse.
+  good-event-chance: 0.3
+  # Chance per roll for SUPER HELL (rare, every curse at once). 0 = only via /sb event set super_hell
+  super-hell-chance: 0.05
+  # Suspense countdown (seconds) before a scheduled event starts. 0 = no countdown.
+  # Super Hell is announced by name during the countdown, other events stay a surprise.
+  warning-seconds: 10
+  # Event ids to exclude from the rotation, e.g. [the_silence, no_escape, super_hell]
+  disabled: []
+
+  blood-moon:
+    damage-multiplier: 2.0
+  soul-drain:
+    hearts: 1
+  fragile-world:
+    radius: 12
+    attempts-per-player: 25
+    interval-ticks: 40
+  hunger-games:
+    multiplier: 3.0
+  beast-awakening:
+    health-multiplier: 2.0
+    damage-multiplier: 1.5
+    speed-multiplier: 1.2
+    # Chance that a natural hostile spawn is joined by a second (also buffed) one.
+    bonus-spawn-chance: 0.25
+  the-silence:
+    # Private-message commands are blocked too, otherwise people could still talk.
+    blocked-commands: [msg, tell, w, whisper, say, me, teammsg, tm, reply, r]
+
+  # ---- blessings
+  soul-surge:
+    amplifier: 1        # Regeneration level - 1 (1 = Regeneration II)
+  swift-winds:
+    amplifier: 1        # Speed II
+  ancient-haste:
+    amplifier: 1        # Haste II
+  iron-skin:
+    amplifier: 0        # Resistance I (-20% damage)
+  bountiful-drops:
+    multiplier: 2       # mob loot x2
+  wisdom-of-the-dead:
+    multiplier: 2.0     # XP x2
+
+  # ---- SUPER HELL: ALL curses at once, turned up, plus a thunderstorm with lightning.
+  super-hell:
+    duration-minutes: 30
+    include-silence: false    # true = Super Hell also hides chat
+    no-elimination: true      # dying in Super Hell does NOT eliminate you - you just respawn
+    respawn-delay-ticks: 20
+    damage-multiplier: 2.5    # mobs deal 2.5x (Blood Moon: 2x)
+    hunger-multiplier: 4.0    # hunger 4x (Hunger Games: 3x)
+    hearts: 2                 # everyone loses 2 hearts (Soul Drain: 1)
+    health-multiplier: 2.0    # beast mobs: 2x health
+    beast-damage-multiplier: 1.5
+    speed-multiplier: 1.15
+    bonus-spawn-chance: 0.4   # 40% of natural mobs get a second buffed twin
+    fragile-attempts: 40
+    lightning-chance: 0.025   # per player per second
+    # curses NOT included in Super Hell (event ids). Remove one to add it to Super Hell.
+    excluded: [acid_rain, butterfingers, phantom_hunt, dizzy_spells, heavy_boots, spoiled_food, spotlight, tired_arms]
+
+  # ---- more curses
+  phantom-hunt:
+    max-per-player: 2
+  dizzy-spells:
+    chance-per-second: 0.015  # per player (about once a minute)
+    seconds: 8                # how long the nausea lasts
+  butterfingers:
+    chance-per-second: 0.015  # per player (about once a minute)
+  brittle-bones:
+    fall-damage-multiplier: 3.0
+  acid-rain:
+    damage: 0.5               # every 2 seconds under open sky (2.0 = one heart)
+
+  # ---- more blessings
+  moonwalk:
+    jump-amplifier: 2         # Jump Boost III (+ Slow Falling)
+  miners-fortune:
+    multiplier: 2             # ores drop x2
+  growing-season:
+    attempts-per-player: 150  # higher = crops grow faster
+  guardian-angel:
+    amplifier: 1              # Absorption II = 4 extra hearts, topped up every minute
+  shrink-ray:
+    scale: 0.5                # player size
+
+  # ---- even more curses
+  heavy-boots:
+    amplifier: 0              # Slowness I
+  spoiled-food:
+    hunger-seconds: 8         # Hunger effect after eating
+  tired-arms:
+    amplifier: 0              # Mining Fatigue I
+
+  # ---- even more blessings
+  warriors-spirit:
+    amplifier: 0              # Strength I
+  lucky-streak:
+    amplifier: 2              # Luck III
+  magnetic-pull:
+    radius: 6.0
+    speed: 0.35
