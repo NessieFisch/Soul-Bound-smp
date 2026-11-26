@@ -17,6 +17,7 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
+import org.bukkit.event.entity.EntityToggleGlideEvent;
 import org.bukkit.event.entity.ItemSpawnEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
@@ -26,6 +27,7 @@ import org.bukkit.event.inventory.PrepareItemCraftEvent;
 import org.bukkit.event.player.PlayerAnimationEvent;
 import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.world.EntitiesLoadEvent;
 import org.bukkit.inventory.CraftingInventory;
 import org.bukkit.inventory.EquipmentSlot;
@@ -125,6 +127,7 @@ public final class LegendaryListener implements Listener {
         Entity d = e.getDamager();
         if (d instanceof Player p) {
             if (e.getCause() != EntityDamageEvent.DamageCause.ENTITY_ATTACK) return;
+            ab.onElytraStrike(p, e); // God Elytra + mace while gliding
             LegendaryWeapon w = plugin.legendary().held(p);
             if (w != null) ab.onMelee(p, w, e);
         } else if (d instanceof AbstractArrow arrow) {
@@ -134,10 +137,36 @@ public final class LegendaryListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onFall(EntityDamageEvent e) {
-        if (e.getCause() != EntityDamageEvent.DamageCause.FALL || !(e.getEntity() instanceof Player p)) return;
-        if (plugin.legendary().held(p) == LegendaryWeapon.GOD_MACE || plugin.abilities().isSlamming(p)) {
-            e.setCancelled(true);
+        if (!(e.getEntity() instanceof Player p)) return;
+        boolean elytra = plugin.legendary().worn(p) == LegendaryWeapon.GOD_ELYTRA;
+        switch (e.getCause()) {
+            case FALL -> {
+                if (elytra || plugin.legendary().held(p) == LegendaryWeapon.GOD_MACE || plugin.abilities().isSlamming(p)) {
+                    e.setCancelled(true);
+                }
+            }
+            case FLY_INTO_WALL -> {
+                if (elytra) e.setCancelled(true);
+            }
+            default -> { }
         }
+    }
+
+    // ------------------------------------------------------------------ God Elytra
+
+    /** The swap-hand key (F) fires Sky Thrust while gliding in the God Elytra. */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onSwapHands(PlayerSwapHandItemsEvent e) {
+        Player p = e.getPlayer();
+        if (!p.isGliding() || plugin.legendary().worn(p) != LegendaryWeapon.GOD_ELYTRA) return;
+        e.setCancelled(true);
+        plugin.abilities().elytraThrust(p);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onGlide(EntityToggleGlideEvent e) {
+        if (!(e.getEntity() instanceof Player p) || plugin.legendary().worn(p) != LegendaryWeapon.GOD_ELYTRA) return;
+        plugin.abilities().onGlideToggle(p, e.isGliding());
     }
 
     // ------------------------------------------------------------------ projectiles

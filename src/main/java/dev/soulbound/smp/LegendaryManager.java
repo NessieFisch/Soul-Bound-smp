@@ -54,8 +54,8 @@ public final class LegendaryManager {
         List<Component> lore = new ArrayList<>();
         lore.add(line(w.gradient("\u2726 LEGENDARY \u2726")));
         lore.add(line(""));
-        if (w.active && w.power != null) {
-            lore.add(line(w.color + "<bold>" + w.power + "</bold> <dark_gray>\u2022 <gray>Right-click <dark_gray>\u2022 <gray>"
+        if (w.power != null) {
+            lore.add(line(w.color + "<bold>" + w.power + "</bold> <dark_gray>\u2022 <gray>" + w.activation() + " <dark_gray>\u2022 <gray>"
                     + cooldownSeconds(w) + "s cooldown"));
             for (String s : w.powerLines) lore.add(line("<gray>  " + s));
             lore.add(line(""));
@@ -87,6 +87,9 @@ public final class LegendaryManager {
     public boolean isLegendary(ItemStack it) { return identify(it) != null; }
 
     public LegendaryWeapon held(Player p) { return identify(p.getInventory().getItemInMainHand()); }
+
+    /** The legendary item worn in the chest slot (the God Elytra), or null. */
+    public LegendaryWeapon worn(Player p) { return identify(p.getInventory().getChestplate()); }
 
     // ------------------------------------------------------------------ cooldowns
 

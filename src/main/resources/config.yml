@@ -46,7 +46,7 @@ heavenly-seal:
 #  craftable:        false = no crafting recipe (admins can still /sb legendary give)
 #  max-crafted:      how many can ever be forged on the server (0 = unlimited).
 #                    Reset with /sb legendary reset <id> if one is lost for good.
-#  cooldown-seconds: right-click power cooldown (only for weapons that have a right-click power)
+#  cooldown-seconds: power cooldown (only for items that have an activated power)
 # ------------------------------------------------------------------
 legendary:
   # Visual effects. Turn individual ones off, or scale every particle count with intensity
@@ -59,6 +59,13 @@ legendary:
     hit-effects: true   # a burst and chime on every melee hit
     hud: true           # cooldown bar on the action bar while holding a weapon with a power
     drop-beacons: true  # a pillar of light over dropped legendary weapons
+    solid: true         # real glowing beams, rings, bursts, crystals and bolts (block displays): far more visible than particles
+    particle-size: 1.6  # how much bigger coloured dust particles are drawn (1.0 = vanilla size)
+  # God Elytra flight and mace-smash tuning.
+  elytra:
+    max-speed: 3.0          # blocks per tick (3.0 = 60 blocks/second); lower it if chunk loading struggles
+    smash-damage-cap: 60.0  # cap on the bonus damage of a Sky Smash (mace hit while gliding)
+    rebound: true           # bounce upward after a Sky Smash so the dive can be repeated
   weapons:
     god_mace:
       craftable: true
@@ -229,6 +236,18 @@ legendary:
           "N": NETHER_STAR
           "T": TOTEM_OF_UNDYING
           "L": LIGHTNING_ROD
+    god_elytra:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 4
+      recipe:
+        shape: ["NFN", "PEP", "NTN"]
+        ingredients:
+          "N": NETHER_STAR
+          "F": FIREWORK_ROCKET
+          "P": PHANTOM_MEMBRANE
+          "E": ELYTRA
+          "T": TOTEM_OF_UNDYING
 
 ritual:
   # How long the ritual lasts once started.

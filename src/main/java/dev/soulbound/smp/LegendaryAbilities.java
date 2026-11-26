@@ -11,6 +11,7 @@ import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.block.Block;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.AbstractArrow;
 import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Arrow;
@@ -25,8 +26,10 @@ import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Tameable;
 import org.bukkit.entity.Trident;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -99,6 +102,9 @@ public final class LegendaryAbilities {
     private final Map<UUID, Long> lastSwing = new HashMap<>();
     /** Dropped legendary items, which get a pillar of light. */
     private final Set<UUID> drops = new HashSet<>();
+    /** God Elytra: the highest point of the current glide, so altitude lost counts as fall distance. */
+    private final Map<UUID, Double> peak = new HashMap<>();
+    private final Map<UUID, Long> lastBoom = new HashMap<>();
     /** True while a power is dealing damage itself, so our own damage hooks do not re-trigger. */
     private boolean internal;
     private BukkitTask task;
@@ -126,6 +132,9 @@ public final class LegendaryAbilities {
         quiet.clear();
         lastSwing.clear();
         drops.clear();
+        peak.clear();
+        lastBoom.clear();
+        fx.cleanup();
     }
 
     public boolean isInternal() { return internal; }
@@ -142,6 +151,7 @@ public final class LegendaryAbilities {
             tickSlams();
             tickHoming();
             tickTrails();
+            tickElytra();
             if (fx.enabled("aura")) auras();
             if (ticks % 5 == 0) {
                 passives();
@@ -165,6 +175,7 @@ public final class LegendaryAbilities {
         for (Player p : Bukkit.getOnlinePlayers()) {
             LegendaryWeapon w = plugin.legendary().held(p);
             if (w != null) heldAura(p, w);
+            if (ticks % 5 == 0 && !p.isGliding() && plugin.legendary().worn(p) == LegendaryWeapon.GOD_ELYTRA) wingShimmer(p);
             Long until = rage.get(p.getUniqueId());
             if (until != null) {
                 if (until < now) rage.remove(p.getUniqueId());
@@ -288,6 +299,13 @@ public final class LegendaryAbilities {
             case GOD_MACE, TITAN_WRATH, EXECUTIONER, EVENT_HORIZON, THUNDER_ROD, INFERNAL_SCEPTER -> true;
             default -> false;
         };
+        if (fx.solid()) {
+            List<Location> pts = new ArrayList<>();
+            Consumer<Location> collect = pts::add;
+            if (overhead) fx.arcVertical(p.getEyeLocation(), 2.3, -45, 75, 6, collect);
+            else fx.arc(p.getLocation(), p.getLocation().getDirection(), 2.2, -75, 75, 7, 1.1, collect);
+            for (int i = 0; i + 1 < pts.size(); i++) fx.beam(pts.get(i), pts.get(i + 1), 0.14f, fx.core(w), 4);
+        }
         if (overhead) {
             fx.arcVertical(p.getEyeLocation(), 2.3, -45, 75, 12, brush);
         } else {
@@ -521,7 +539,7 @@ public final class LegendaryAbilities {
     /** A chime and sparkle when a power comes off cooldown. */
     private void readyPing(UUID id, LegendaryWeapon w) {
         Player p = Bukkit.getPlayer(id);
-        if (p == null || plugin.legendary().held(p) != w) return;
+        if (p == null || (plugin.legendary().held(p) != w && plugin.legendary().worn(p) != w)) return;
         Location l = p.getLocation().add(0, 1.2, 0);
         fx.sphere(l, 0.9, fx.n(14), fx.signature(w, 1, 0.02));
         fx.sound(l, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 1f, 1.5f);
@@ -546,6 +564,11 @@ public final class LegendaryAbilities {
             fx.column(l.clone().add(Math.cos(t) * 0.5, 0, Math.sin(t) * 0.5), 0.35 * t, 0.5, rod);
         });
         fx.debris(blockBelow(l), 40, 0.5).accept(l);
+        if (fx.solid()) {
+            fx.beam(l, l.clone().add(0, 7, 0), 1.0f, fx.glass(g), 10);
+            fx.beam(l, l.clone().add(0, 7, 0), 0.4f, fx.core(g), 8);
+            fx.shockRing(l.clone().add(0, 0.1, 0), 0.5, 4.0, 0.25f, 0.35f, fx.core(g), 8);
+        }
         fx.sphere(l.clone().add(0, 1, 0), 1.2, fx.n(30), fx.particle(Particle.CLOUD, 1, 0.05, 0.1));
         fx.sound(l, Sound.ENTITY_ENDER_DRAGON_FLAP, 1.5f, 0.7f);
         fx.sound(l, Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 0.8f, 1.4f);
@@ -566,6 +589,13 @@ public final class LegendaryAbilities {
         w.strikeLightningEffect(c);
         w.spawnParticle(Particle.EXPLOSION_EMITTER, c, 1);
         fx.debris(blockBelow(c), 80, 1.2).accept(c.clone().add(0, 0.3, 0));
+        if (fx.solid()) {
+            fx.shockRing(c.clone().add(0, 0.15, 0), 0.6, radius, 0.4f, 0.5f, fx.core(g), 10);
+            fx.shockRing(c.clone().add(0, 0.1, 0), 0.4, radius * 0.7, 0.25f, 0.4f, fx.glass(g), 8);
+            fx.beam(c, c.clone().add(0, 10, 0), 1.6f, fx.glass(g), 12);
+            fx.beam(c, c.clone().add(0, 10, 0), 0.6f, fx.core(g), 10);
+            fx.bloom(c.clone().add(0, 1, 0), fx.glass(g), 4.5f, 8);
+        }
         fx.animate(9, t -> {
             double r = radius * (t + 1) / 9.0;
             fx.ring(c, r, fx.n(44), sig);
@@ -617,6 +647,15 @@ public final class LegendaryAbilities {
         final int frames = 6;
 
         fx.ring(start, 0.5, 12, core);
+        if (fx.solid()) {
+            fx.beam(start, end, 1.0f, fx.glass(d), 10);
+            fx.beam(start, end, 0.45f, fx.core(d), 8);
+            fx.beam(start, end, 0.18f, Material.WHITE_CONCRETE, 6);
+            fx.bloom(start, fx.core(d), 1.2f, 5);
+            fx.bloom(end, fx.glass(d), 3.2f, 7);
+            fx.bloom(end, fx.core(d), 1.6f, 6);
+            fx.shockRing(end.clone(), 0.4, 3.5, 0.2f, 0.3f, fx.core(d), 8);
+        }
         fx.animate(frames, t -> {
             Location a = start.clone().add(dir.clone().multiply(len * t / frames));
             Location b = start.clone().add(dir.clone().multiply(len * (t + 1) / frames));
@@ -664,10 +703,12 @@ public final class LegendaryAbilities {
             Location from = victims.get(i).getLocation().add(0, 1, 0);
             fx.sphere(from, 0.8, fx.n(20), fx.particle(Particle.SOUL_FIRE_FLAME, 1, 0.03, 0.02));
             stream(from, p, i * 2, sig);
+            fx.beam(from, p.getLocation().add(0, 1, 0), 0.14f, fx.core(r), 10);
         }
         fx.animate(10, t -> fx.ring(c.clone().add(0, 0.3, 0), radius * (t + 1) / 10.0, fx.n(36), sig));
         fx.expandingRing(c.clone().add(0, 0.6, 0), radius, 10, 30, fx.particle(Particle.SOUL, 1, 0.02, 0.02));
         fx.sound(c, Sound.ENTITY_WITHER_SHOOT, 1.2f, 0.6f);
+        if (fx.solid()) fx.shockRing(c.clone().add(0, 0.1, 0), 0.5, radius, 0.25f, 0.4f, fx.core(r), 10);
         fx.sound(c, Sound.ENTITY_ELDER_GUARDIAN_CURSE, 1.0f, 1.2f);
 
         if (!victims.isEmpty()) {
@@ -703,6 +744,11 @@ public final class LegendaryAbilities {
             fx.ring(l.clone().add(0, 0.1, 0), 0.5 + t * 0.3, 28, sig);
         });
         fx.sp(Particle.CRIT, l.clone().add(0, 1, 0), 60, 0.5, 0.9, 0.5, 0.4);
+        if (fx.solid()) {
+            fx.beam(l, l.clone().add(0, 6, 0), 1.3f, fx.glass(t0), 16);
+            fx.beam(l, l.clone().add(0, 6, 0), 0.5f, fx.core(t0), 14);
+            fx.shockRing(l.clone().add(0, 0.1, 0), 0.5, 5.0, 0.3f, 0.4f, fx.core(t0), 10);
+        }
         fx.sound(l, Sound.ENTITY_RAVAGER_ROAR, 1.5f, 0.8f);
         fx.sound(l, Sound.ENTITY_LIGHTNING_BOLT_IMPACT, 0.8f, 0.7f);
         say(p, t0.color + "<bold>BERSERKER'S RAGE!");
@@ -745,6 +791,19 @@ public final class LegendaryAbilities {
         });
         fx.sphere(c.clone().add(0, 1, 0), 1.5, fx.n(30), fx.particle(Particle.CLOUD, 1, 0.05, 0.05));
         fx.sound(c, Sound.BLOCK_GLASS_BREAK, 1.5f, 0.6f);
+        if (fx.solid()) {
+            fx.shockRing(c.clone().add(0, 0.1, 0), 0.5, radius, 0.3f, 0.45f, fx.core(f), 14);
+            fx.shockRing(c.clone().add(0, 0.1, 0), 0.4, radius * 0.75, 0.2f, 0.35f, fx.glass(f), 12);
+            ThreadLocalRandom rnd = ThreadLocalRandom.current();
+            for (int i = 0; i < 28; i++) {
+                double ang = rnd.nextDouble() * Math.PI * 2;
+                double rr = 1.2 + rnd.nextDouble() * (radius - 1.2);
+                int delay = (int) (rr / radius * 8.0);
+                Location base = c.clone().add(Math.cos(ang) * rr, 0, Math.sin(ang) * rr);
+                float h = 1.3f + (float) rnd.nextDouble() * 1.7f;
+                fx.later(delay + 1, () -> fx.spike(base, h, 0.45f, fx.core(f), 3, 40));
+            }
+        }
         fx.sound(c, Sound.ENTITY_PLAYER_HURT_FREEZE, 1.5f, 0.8f);
         fx.sound(c, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 1.5f, 0.5f);
         return true;
@@ -778,6 +837,11 @@ public final class LegendaryAbilities {
         fx.line(from, to, 0.35, shade);
         fx.spiralAlong(from, to, 0.5, 3.0, fx.n(24), fx.signature(s, 1, 0.0));
         fx.sound(start, Sound.ENTITY_ENDERMAN_TELEPORT, 1f, 0.8f);
+        if (fx.solid()) {
+            fx.beam(from, to, 0.9f, fx.glass(s), 10);
+            fx.beam(from, to, 0.35f, fx.core(s), 8);
+            fx.collapse(from, fx.core(s), 1.6f, 6);
+        }
 
         p.teleport(dest);
         p.setFallDistance(0f);
@@ -793,6 +857,10 @@ public final class LegendaryAbilities {
             fx.sp(Particle.PORTAL, to, 50, 0.3, 0.6, 0.3, 0.5);
         });
         fx.sound(dest, Sound.ENTITY_ENDERMAN_TELEPORT, 1f, 1.2f);
+        if (fx.solid()) {
+            fx.bloom(to, fx.glass(s), 2.4f, 6);
+            fx.shockRing(dest.clone().add(0, 0.1, 0), 2.0, 0.3, 0.2f, 0.3f, fx.core(s), 6);
+        }
         say(p, s.color + "Shadow Step! <gray>Your next strike is empowered.");
         return true;
     }
@@ -842,6 +910,12 @@ public final class LegendaryAbilities {
         });
         fx.sound(c, Sound.ENTITY_ENDERMAN_TELEPORT, 1.5f, 0.5f);
         fx.sound(c, Sound.BLOCK_BEACON_DEACTIVATE, 1.5f, 0.5f);
+        if (fx.solid()) {
+            fx.collapse(c, fx.core(e), 2.8f, 14);
+            fx.collapse(c, fx.glass(e), 5.0f, 14);
+            fx.shockRing(base.clone().add(0, 0.1, 0), radius, 1.0, 0.25f, 0.35f, fx.core(e), 14);
+            fx.later(14, () -> fx.bloom(c, fx.glass(e), 5.5f, 6));
+        }
         return true;
     }
 
@@ -885,6 +959,11 @@ public final class LegendaryAbilities {
         }));
         fx.sound(c, Sound.ENTITY_SPLASH_POTION_BREAK, 1.5f, 0.7f);
         fx.sound(c, Sound.ENTITY_WITCH_THROW, 1.0f, 0.6f);
+        if (fx.solid()) {
+            fx.bloom(c.clone().add(0, 1, 0), fx.glass(v), (float) radius * 2.0f, 8);
+            fx.bloom(c.clone().add(0, 1, 0), fx.core(v), (float) radius * 0.9f, 8);
+            fx.shockRing(c.clone().add(0, 0.1, 0), 0.5, radius, 0.25f, 0.4f, fx.core(v), 10);
+        }
         return true;
     }
 
@@ -918,6 +997,10 @@ public final class LegendaryAbilities {
         fx.debris(blockBelow(c), 50, 0.8).accept(c.clone().add(0, 0.3, 0));
         fx.animate(6, t -> fx.ring(c, radius * (t + 1) / 6.0, 36, sig));
         fx.slashMark(c.clone().add(0, 1.2, 0), x, 1.4);
+        if (fx.solid()) {
+            fx.shockRing(c.clone().add(0, 0.1, 0), 0.5, radius, 0.35f, 0.45f, fx.core(x), 10);
+            fx.beam(c, c.clone().add(0, 5, 0), 0.9f, fx.glass(x), 8);
+        }
         fx.sphere(c.clone().add(0, 0.8, 0), 1.6, fx.n(30), fx.particle(Particle.CLOUD, 1, 0.05, 0.1));
         fx.sound(c, Sound.BLOCK_ANVIL_LAND, 1.5f, 0.6f);
         fx.sound(c, Sound.ENTITY_PLAYER_ATTACK_CRIT, 1.5f, 0.5f);
@@ -944,6 +1027,8 @@ public final class LegendaryAbilities {
         tag(fb, s);
         fx.sphere(muzzle, 0.7, fx.n(25), fx.combo(fx.signature(s, 2, 0.05), fx.particle(Particle.FLAME, 1, 0.05, 0.05)));
         fx.sound(muzzle, Sound.ENTITY_BLAZE_SHOOT, 1.5f, 0.6f);
+        fx.bloom(muzzle, fx.glass(s), 1.4f, 5);
+        fx.bloom(muzzle, fx.core(s), 0.7f, 4);
         fx.sound(muzzle, Sound.ENTITY_GHAST_SHOOT, 1.0f, 0.8f);
         return true;
     }
@@ -962,6 +1047,10 @@ public final class LegendaryAbilities {
         Consumer<Location> spark = fx.combo(fx.dust(t0.rgbA, t0.rgbB, 1.4f, 2, 0.03), fx.particle(Particle.ELECTRIC_SPARK, 1, 0.05, 0.02));
 
         fx.sound(at, Sound.BLOCK_BEACON_ACTIVATE, 2f, 2f);
+        if (fx.solid()) {
+            fx.shockRing(at.clone().add(0, 0.1, 0), 4.5, 0.5, 0.2f, 0.3f, fx.core(t0), 12);
+            fx.beam(at, at.clone().add(0, 40, 0), 0.12f, fx.glass(t0), 12);
+        }
         // 12 ticks of warning: a shrinking ring on the ground and a bolt growing down from the clouds
         fx.animate(12, t -> {
             fx.ring(at, 0.5 + 4.0 * (1.0 - t / 12.0), 28, spark);
@@ -979,6 +1068,10 @@ public final class LegendaryAbilities {
         fx.expandingRing(at, 4.5, 5, 30, spark);
         fx.column(at, 12.0, 0.5, spark);
         fx.debris(Material.COPPER_BLOCK, 30, 0.8).accept(at);
+        LegendaryWeapon tr = LegendaryWeapon.THUNDER_ROD;
+        fx.bolt(at.clone().add(0, 40, 0), at, 0.45f, fx.core(tr), fx.glass(tr), 8);
+        fx.bloom(at.clone().add(0, 1, 0), fx.glass(tr), 4.0f, 6);
+        fx.shockRing(at.clone().add(0, 0.1, 0), 0.5, 4.5, 0.25f, 0.4f, fx.core(tr), 8);
         fx.sound(at, Sound.ITEM_TRIDENT_THUNDER, 3f, 0.9f);
         fx.sound(at, Sound.ENTITY_LIGHTNING_BOLT_IMPACT, 3f, 1.2f);
         if (!p.isOnline()) return;
@@ -988,6 +1081,240 @@ public final class LegendaryAbilities {
             LivingEntity le = (LivingEntity) en;
             hurt(p, le, 16.0);
             le.setFireTicks(100);
+        }
+    }
+
+    // ------------------------------------------------------------------ God Elytra
+
+    private double elytraMaxSpeed() {
+        return Math.max(1.0, plugin.getConfig().getDouble("legendary.elytra.max-speed", 3.0));
+    }
+
+    /** Runs for every gliding player: God Elytra flight handling, plus wing and speed effects. */
+    private void tickElytra() {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            UUID id = p.getUniqueId();
+            if (!p.isGliding()) {
+                peak.remove(id);
+                continue;
+            }
+            if (plugin.legendary().worn(p) != LegendaryWeapon.GOD_ELYTRA) continue;
+
+            Location l = p.getLocation();
+            double y = l.getY();
+            double pk = Math.max(peak.getOrDefault(id, y), y);
+            peak.put(id, pk);
+            // vanilla forgets fall distance in shallow dives; here every block of altitude lost counts for a smash
+            double fall = pk - y;
+            if (fall > p.getFallDistance()) p.setFallDistance((float) fall);
+
+            Vector v = p.getVelocity();
+            Vector look = l.getDirection().normalize();
+            double pitch = l.getPitch(); // positive = looking down
+            Vector nv = v.clone();
+            boolean changed = true;
+            if (p.isSneaking()) {
+                nv.multiply(0.88); // air-brake for precise landings
+            } else if (pitch > 25.0) {
+                // stoop: the steeper the dive, the harder it accelerates
+                double accel = 0.10 + Math.min(1.0, (pitch - 25.0) / 55.0) * 0.14;
+                nv.add(look.clone().multiply(accel));
+            } else if (pitch > -20.0 && v.length() < 1.5) {
+                nv.add(look.clone().multiply(0.06)); // level flight keeps its speed
+            } else {
+                changed = false;
+            }
+            double maxSpeed = elytraMaxSpeed();
+            if (nv.length() > maxSpeed) {
+                nv.normalize().multiply(maxSpeed);
+                changed = true;
+            }
+            if (changed) p.setVelocity(nv);
+
+            double speed = nv.length();
+            if (fx.enabled("trails")) wingFx(p, l, look, speed);
+            if (speed > 2.2) {
+                long now = System.currentTimeMillis();
+                Long lb = lastBoom.get(id);
+                if (lb == null || now - lb > 2000L) {
+                    lastBoom.put(id, now);
+                    Location body = l.clone().add(0, 0.4, 0);
+                    fx.sp(Particle.SONIC_BOOM, body, 1, 0.0, 0.0, 0.0, 0.0);
+                    fx.sphere(body.clone().subtract(look.clone().multiply(1.5)), 1.2, fx.n(20), fx.particle(Particle.CLOUD, 1, 0.05, 0.05));
+                    fx.sound(body, Sound.ENTITY_WARDEN_SONIC_BOOM, 0.4f, 1.8f);
+                }
+            }
+            if (ticks % 5 == 0) elytraHud(p, speed);
+        }
+    }
+
+    /** Glowing wings streaming from the shoulders, with contrails at the tips when fast. */
+    private void wingFx(Player p, Location l, Vector look, double speed) {
+        LegendaryWeapon g = LegendaryWeapon.GOD_ELYTRA;
+        Vector right = look.clone().crossProduct(new Vector(0, 1, 0));
+        if (right.lengthSquared() < 1.0E-4) return; // flying straight up or down
+        right.normalize();
+        Location body = l.clone().add(0, 0.4, 0);
+        Consumer<Location> feather = fx.dust(g.rgbA, g.rgbB, 1.0f, 1, 0.02);
+        for (int side = -1; side <= 1; side += 2) {
+            for (int i = 1; i <= 5; i++) {
+                Location pt = body.clone().add(right.clone().multiply(side * (0.25 + i * 0.28)))
+                        .subtract(look.clone().multiply(i * 0.18));
+                feather.accept(pt);
+                if (i == 5) {
+                    fx.sp(Particle.END_ROD, pt, 1, 0.0, 0.0, 0.0, 0.0);
+                    if (speed > 1.2) fx.sp(Particle.CLOUD, pt, 1, 0.02, 0.02, 0.02, 0.0);
+                }
+            }
+        }
+    }
+
+    /** Folded wings shimmer behind the shoulders while standing around in the God Elytra. */
+    private void wingShimmer(Player p) {
+        LegendaryWeapon g = LegendaryWeapon.GOD_ELYTRA;
+        Location l = p.getLocation();
+        Vector back = l.getDirection().setY(0);
+        if (back.lengthSquared() < 1.0E-4) return;
+        back.normalize().multiply(-0.35);
+        Vector right = back.clone().crossProduct(new Vector(0, 1, 0));
+        if (right.lengthSquared() < 1.0E-4) return;
+        right.normalize();
+        Consumer<Location> feather = fx.dust(g.rgbA, g.rgbB, 0.9f, 1, 0.03);
+        for (int side = -1; side <= 1; side += 2) {
+            for (int i = 0; i < 3; i++) {
+                Location pt = l.clone().add(0, 1.55 - i * 0.28, 0).add(back)
+                        .add(right.clone().multiply(side * (0.25 + i * 0.12)));
+                feather.accept(pt);
+                if (i == 0) fx.sp(Particle.END_ROD, pt, 1, 0.0, 0.0, 0.0, 0.0);
+            }
+        }
+    }
+
+    private void elytraHud(Player p, double speed) {
+        Long q = quiet.get(p.getUniqueId());
+        if (q != null && q > System.currentTimeMillis()) return;
+        LegendaryWeapon g = LegendaryWeapon.GOD_ELYTRA;
+        long left = plugin.legendary().cooldownLeftMs(p, g);
+        String thrust = left <= 0 ? "<green>\u2714 THRUST READY" : "<gray>Thrust <white>" + ((left + 999) / 1000) + "s";
+        plugin.msg().actionBar(p, g.gradient("<bold>God Elytra</bold>") + " <dark_gray>\u2022 <white>"
+                + Math.round(speed * 20) + " b/s <dark_gray>\u2022 " + thrust);
+    }
+
+    /** Sky Thrust (swap-hand key while gliding): a rocket-like burst along your line of sight. */
+    public void elytraThrust(Player p) {
+        LegendaryWeapon g = LegendaryWeapon.GOD_ELYTRA;
+        long left = plugin.legendary().cooldownLeftMs(p, g);
+        if (left > 0) {
+            say(p, g.color + "Sky Thrust <gray>is recharging: <white>" + ((left + 999) / 1000) + "s");
+            fx.sound(p.getLocation(), Sound.BLOCK_FIRE_EXTINGUISH, 0.5f, 1.6f);
+            return;
+        }
+        Location l = p.getLocation();
+        Vector look = l.getDirection().normalize();
+        Vector nv = p.getVelocity().add(look.clone().multiply(1.5));
+        double maxSpeed = elytraMaxSpeed();
+        if (nv.length() > maxSpeed) nv.normalize().multiply(maxSpeed);
+        p.setVelocity(nv);
+
+        Location body = l.clone().add(0, 0.4, 0);
+        Location behind = body.clone().subtract(look.clone().multiply(1.2));
+        fx.sp(Particle.SONIC_BOOM, behind, 1, 0.0, 0.0, 0.0, 0.0);
+        fx.sphere(behind, 1.4, fx.n(40), fx.combo(fx.signature(g, 2, 0.05), fx.particle(Particle.CLOUD, 1, 0.05, 0.1)));
+        fx.sp(Particle.FIREWORK, behind, 30, 0.4, 0.4, 0.4, 0.15);
+        fx.spiralAlong(body, body.clone().add(look.clone().multiply(8.0)), 0.6, 3.0, fx.n(30), fx.signature(g, 2, 0.04));
+        fx.sound(l, Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, 1.2f, 0.8f);
+        if (fx.solid()) {
+            Location ahead = body.clone().add(look.clone().multiply(12.0));
+            fx.beam(body, ahead, 0.7f, fx.glass(g), 8);
+            fx.beam(body, ahead, 0.25f, fx.core(g), 6);
+            fx.bloom(behind, fx.glass(g), 2.2f, 6);
+        }
+        fx.sound(l, Sound.ENTITY_WARDEN_SONIC_BOOM, 0.5f, 1.8f);
+        fx.sound(l, Sound.ENTITY_ENDER_DRAGON_FLAP, 1f, 1.5f);
+
+        plugin.legendary().startCooldown(p, g);
+        int cd = plugin.legendary().cooldownSeconds(g);
+        if (cd > 0) {
+            UUID id = p.getUniqueId();
+            Bukkit.getScheduler().runTaskLater(plugin, () -> readyPing(id, g), cd * 20L);
+        }
+    }
+
+    /** Starting a glide: reset the altitude tracker and open the wings with a flourish. */
+    public void onGlideToggle(Player p, boolean gliding) {
+        UUID id = p.getUniqueId();
+        if (!gliding) {
+            peak.remove(id);
+            return;
+        }
+        peak.put(id, p.getLocation().getY());
+        LegendaryWeapon g = LegendaryWeapon.GOD_ELYTRA;
+        Location l = p.getLocation().add(0, 0.5, 0);
+        fx.sphere(l, 1.2, fx.n(30), fx.signature(g, 2, 0.05));
+        fx.expandingRing(p.getLocation(), 2.5, 5, 24, fx.signature(g, 2, 0.05));
+        fx.sound(l, Sound.ENTITY_ENDER_DRAGON_FLAP, 0.8f, 1.7f);
+        fx.sound(l, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.8f, 1.8f);
+    }
+
+    /**
+     * Sky Smash: vanilla refuses smash attacks while gliding, so with the God Elytra a mace hit mid-glide
+     * is resolved here. Bonus damage follows the vanilla smash curve plus Density, scaled by flight speed,
+     * then a shockwave hits nearby enemies and the wearer rebounds upward to dive again.
+     */
+    public void onElytraStrike(Player p, EntityDamageByEntityEvent e) {
+        if (e.getCause() != EntityDamageEvent.DamageCause.ENTITY_ATTACK || !p.isGliding()) return;
+        if (plugin.legendary().worn(p) != LegendaryWeapon.GOD_ELYTRA) return;
+        ItemStack hand = p.getInventory().getItemInMainHand();
+        if (hand.getType() != Material.MACE) return;
+
+        UUID id = p.getUniqueId();
+        Location pl = p.getLocation();
+        double fall = Math.max(p.getFallDistance(), peak.getOrDefault(id, pl.getY()) - pl.getY());
+        if (fall < 3.0) return;
+
+        double speed = p.getVelocity().length();
+        double bonus = 4.0 * Math.min(fall, 3.0) + 2.0 * Math.max(0.0, Math.min(fall - 3.0, 5.0)) + Math.max(0.0, fall - 8.0);
+        bonus += hand.getEnchantmentLevel(Enchantment.DENSITY) * 0.5 * fall;
+        bonus *= 1.0 + Math.min(speed, 3.0) * 0.15;
+        bonus = Math.min(bonus, plugin.getConfig().getDouble("legendary.elytra.smash-damage-cap", 60.0));
+        e.setDamage(e.getDamage() + bonus);
+
+        Entity victim = e.getEntity();
+        Location hc = victim.getLocation().add(0, Math.max(0.5, victim.getHeight() * 0.6), 0);
+        LegendaryWeapon g = LegendaryWeapon.GOD_ELYTRA;
+        Consumer<Location> sig = fx.signature(g, 3, 0.1);
+        fx.sp(Particle.SONIC_BOOM, hc, 1, 0.0, 0.0, 0.0, 0.0);
+        fx.sphere(hc, 1.8, fx.n(50), sig);
+        fx.expandingRing(victim.getLocation().add(0, 0.5, 0), 4.5, 6, 32, sig);
+        fx.sp(Particle.FIREWORK, hc, 40, 0.5, 0.5, 0.5, 0.2);
+        fx.sound(hc, Sound.ENTITY_WARDEN_SONIC_BOOM, 1.2f, 1.2f);
+        fx.sound(hc, Sound.BLOCK_ANVIL_LAND, 1f, 0.5f);
+        if (fx.solid()) {
+            fx.shockRing(victim.getLocation().add(0, 0.2, 0), 0.5, 5.0, 0.3f, 0.45f, fx.core(g), 10);
+            fx.bloom(hc, fx.glass(g), 4.0f, 7);
+            fx.bloom(hc, fx.core(g), 1.8f, 6);
+            fx.beam(hc.clone().add(0, 10, 0), hc, 0.6f, fx.glass(g), 8);
+        }
+        say(p, g.color + "<bold>SKY SMASH!</bold> <white>+" + Math.round(bonus) + g.color + " damage");
+
+        // shockwave on everything else nearby
+        double wave = bonus * 0.25;
+        for (Entity en : victim.getNearbyEntities(4.0, 3.0, 4.0)) {
+            if (en.equals(victim) || !validTarget(p, en)) continue;
+            LivingEntity le = (LivingEntity) en;
+            hurt(p, le, wave);
+            knockAway(le, victim.getLocation(), 1.1, 0.5);
+        }
+
+        // bounce back up so the dive can be repeated
+        if (plugin.getConfig().getBoolean("legendary.elytra.rebound", true)) {
+            Vector look = pl.getDirection().normalize();
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!p.isOnline()) return;
+                p.setVelocity(new Vector(look.getX() * 0.7, 1.15, look.getZ() * 0.7));
+                p.setFallDistance(0f);
+                peak.put(id, p.getLocation().getY());
+            });
         }
     }
 
@@ -1013,6 +1340,8 @@ public final class LegendaryAbilities {
                     fx.helix(l, 3.0, 1.0, 2.0, fx.n(30), fx.signature(w, 1, 0.02));
                     fx.debris(blockBelow(l), 40, 0.6).accept(l.clone().add(0, 0.2, 0));
                     fx.expandingRing(l, 3.0, 4, 24, fx.signature(w, 2, 0.05));
+                    fx.bolt(l.clone().add(0, 14, 0), l, 0.4f, fx.core(w), fx.glass(w), 8);
+                    fx.shockRing(l.clone().add(0, 0.1, 0), 0.4, 3.5, 0.25f, 0.4f, fx.core(w), 8);
                     fx.sound(l, Sound.ENTITY_LIGHTNING_BOLT_IMPACT, 1f, 1f);
                 }
             }
@@ -1039,6 +1368,7 @@ public final class LegendaryAbilities {
                     Consumer<Location> spark = fx.combo(fx.dust(w.rgbA, w.rgbB, 1.3f, 1, 0.03), fx.particle(Particle.ELECTRIC_SPARK, 2, 0.05, 0.05));
                     l.getWorld().strikeLightningEffect(l);
                     fx.jagged(l.clone().add(0, 10, 0), l, 5, 0.6, 0.4, spark);
+                    fx.bolt(l.clone().add(0, 12, 0), l, 0.3f, fx.core(w), fx.glass(w), 8);
                     fx.sphere(hc, 1.2, fx.n(30), spark);
                 }
             }
@@ -1201,6 +1531,7 @@ public final class LegendaryAbilities {
             fx.ring(l, 0.9, 16, fx.particle(Particle.REVERSE_PORTAL, 1, 0.02, 0.05));
             fx.sp(Particle.PORTAL, l, 30, 0.3, 0.6, 0.3, 0.5);
             fx.sound(l, Sound.ENTITY_ENDERMAN_TELEPORT, 0.6f, 1.8f);
+            fx.bloom(l, fx.glass(w), 2.2f, 6);
         } else if (w == LegendaryWeapon.STARGAZER) {
             e.setDamage(e.getDamage() * 1.25);
             fx.constellation(l, w);
@@ -1251,6 +1582,8 @@ public final class LegendaryAbilities {
         world.strikeLightningEffect(at);
         fx.expandingRing(at, 3.5, 5, 24, spark);
         fx.jagged(at.clone().add(0, 12, 0), at, 6, 0.8, 0.4, spark);
+        fx.bolt(at.clone().add(0, 16, 0), at, 0.4f, fx.core(w), fx.glass(w), 8);
+        fx.bloom(at.clone().add(0, 1, 0), fx.glass(w), 3.0f, 6);
         fx.sound(at, Sound.ITEM_TRIDENT_THUNDER, 2f, 1f);
 
         Set<Entity> done = new HashSet<>();
@@ -1266,6 +1599,7 @@ public final class LegendaryAbilities {
             LivingEntity le = (LivingEntity) en;
             hurt(by, le, 7.0);
             fx.jagged(from, le.getLocation().add(0, 1, 0), 5, 0.3, 0.3, spark);
+            fx.bolt(from, le.getLocation().add(0, 1, 0), 0.18f, fx.core(w), fx.glass(w), 6);
             fx.sphere(le.getLocation().add(0, 1, 0), 0.7, fx.n(14), spark);
             done.add(en);
             chains++;

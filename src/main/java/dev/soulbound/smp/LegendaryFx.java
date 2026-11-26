@@ -8,9 +8,16 @@ import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.entity.BlockDisplay;
+import org.bukkit.entity.Display;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
@@ -25,6 +32,8 @@ import java.util.function.IntConsumer;
 public final class LegendaryFx {
 
     private final SoulboundPlugin plugin;
+    /** Solid effect entities currently alive, so they can all be removed on shutdown. */
+    private final Set<BlockDisplay> live = new HashSet<>();
 
     public LegendaryFx(SoulboundPlugin plugin) { this.plugin = plugin; }
 
@@ -41,6 +50,11 @@ public final class LegendaryFx {
     /** Scales a particle count by the configured intensity (never below 1). */
     public int n(int base) {
         return Math.max(1, (int) Math.round(base * intensity()));
+    }
+
+    /** Dust particles are drawn this much bigger than their nominal size (they are tiny by default). */
+    private float sizeScale() {
+        return (float) Math.max(0.5, Math.min(4.0, plugin.getConfig().getDouble("legendary.effects.particle-size", 1.6)));
     }
 
     // ------------------------------------------------------------------ raw helpers
@@ -62,6 +76,7 @@ public final class LegendaryFx {
                 try {
                     frame.accept(t);
                 } catch (RuntimeException ex) {
+                    plugin.getLogger().warning("Legendary effect frame failed: " + ex);
                     cancel();
                     return;
                 }
@@ -82,7 +97,7 @@ public final class LegendaryFx {
 
     /** Coloured dust that fades from colour {@code a} to colour {@code b}. */
     public Consumer<Location> dust(Color a, Color b, float size, int count, double spread) {
-        Particle.DustTransition dt = new Particle.DustTransition(a, b, size);
+        Particle.DustTransition dt = new Particle.DustTransition(a, b, size * sizeScale());
         return l -> l.getWorld().spawnParticle(Particle.DUST_COLOR_TRANSITION, l, n(count), spread, spread, spread, 0, dt);
     }
 
@@ -101,7 +116,7 @@ public final class LegendaryFx {
 
     /** The weapon's colours plus its accent particle: its visual signature. */
     public Consumer<Location> signature(LegendaryWeapon w, int count, double spread) {
-        return combo(dust(w.rgbA, w.rgbB, 1.3f, count, spread),
+        return combo(dust(w.rgbA, w.rgbB, 1.3f, count * 2, spread),
                 particle(w.accent, Math.max(1, count / 3), spread, 0.02));
     }
 
@@ -236,6 +251,181 @@ public final class LegendaryFx {
         animate(duration, t -> ring(c, maxRadius * (t + 1) / duration, points, brush));
     }
 
+    // ------------------------------------------------------------------ solid (block display) visuals
+
+    /**
+     * Real glowing geometry: beams, rings, bursts and spikes drawn with block display entities. Unlike
+     * particles these are always clearly visible. They are full-bright, non-persistent, and removed
+     * automatically a few ticks after they appear.
+     */
+    public boolean solid() { return enabled("solid"); }
+
+    /** Removes every solid effect still alive (called on shutdown). */
+    public void cleanup() {
+        for (BlockDisplay d : live) {
+            if (d.isValid()) d.remove();
+        }
+        live.clear();
+    }
+
+    /** The bright inner material of a weapon's solid effects. */
+    public Material core(LegendaryWeapon w) {
+        return switch (w) {
+            case GOD_MACE -> Material.GOLD_BLOCK;
+            case DAWNBREAKER, THUNDER_ROD -> Material.GLOWSTONE;
+            case SOUL_REAPER, STORMCALLER, GOD_ELYTRA -> Material.SEA_LANTERN;
+            case VOIDPIERCER -> Material.CRYING_OBSIDIAN;
+            case TITAN_WRATH, EXECUTIONER -> Material.REDSTONE_BLOCK;
+            case HELLFIRE_CROSSBOW, INFERNAL_SCEPTER -> Material.MAGMA_BLOCK;
+            case FROSTBRAND -> Material.BLUE_ICE;
+            case SHADOWFANG, EVENT_HORIZON -> Material.BLACK_CONCRETE;
+            case VIPER_FANG -> Material.LIME_CONCRETE;
+            case STARGAZER -> Material.WHITE_CONCRETE;
+        };
+    }
+
+    /** The translucent outer material of a weapon's solid effects. */
+    public Material glass(LegendaryWeapon w) {
+        return switch (w) {
+            case GOD_MACE, THUNDER_ROD -> Material.YELLOW_STAINED_GLASS;
+            case DAWNBREAKER, HELLFIRE_CROSSBOW, INFERNAL_SCEPTER -> Material.ORANGE_STAINED_GLASS;
+            case SOUL_REAPER -> Material.CYAN_STAINED_GLASS;
+            case VOIDPIERCER, SHADOWFANG, EVENT_HORIZON -> Material.PURPLE_STAINED_GLASS;
+            case TITAN_WRATH, EXECUTIONER -> Material.RED_STAINED_GLASS;
+            case STORMCALLER, FROSTBRAND, GOD_ELYTRA -> Material.LIGHT_BLUE_STAINED_GLASS;
+            case VIPER_FANG -> Material.LIME_STAINED_GLASS;
+            case STARGAZER -> Material.WHITE_STAINED_GLASS;
+        };
+    }
+
+    private BlockDisplay spawnBlock(Location at, Material mat, Transformation tr) {
+        BlockDisplay d = at.getWorld().spawn(at, BlockDisplay.class, e -> {
+            e.setBlock(mat.createBlockData());
+            e.setTransformation(tr);
+            e.setBrightness(new Display.Brightness(15, 15));
+            e.setViewRange(3.0f);
+            e.setShadowRadius(0.0f);
+            e.setPersistent(false);
+            e.setInvulnerable(true);
+        });
+        live.add(d);
+        return d;
+    }
+
+    /** Animates a display to {@code end} over {@code ticks}, then removes it. */
+    private void retire(BlockDisplay d, int ticks, Transformation end) {
+        later(1, () -> {
+            if (!d.isValid()) return;
+            d.setInterpolationDelay(0);
+            d.setInterpolationDuration(Math.max(1, ticks));
+            d.setTransformation(end);
+        });
+        later(ticks + 2, () -> {
+            if (d.isValid()) d.remove();
+            live.remove(d);
+        });
+    }
+
+    private Transformation bar(Quaternionf rot, float thickness, float len) {
+        Vector3f off = new Vector3f(-thickness / 2f, -thickness / 2f, 0f);
+        rot.transform(off);
+        return new Transformation(off, new Quaternionf(rot), new Vector3f(thickness, thickness, len), new Quaternionf());
+    }
+
+    private Transformation cube(float size, Quaternionf rot) {
+        Vector3f off = new Vector3f(-size / 2f, -size / 2f, -size / 2f);
+        rot.transform(off);
+        return new Transformation(off, new Quaternionf(rot), new Vector3f(size, size, size), new Quaternionf());
+    }
+
+    private Transformation slab(Quaternionf rot, Vector3f pos, float thickness, float height, float len) {
+        Vector3f c = new Vector3f(thickness / 2f, 0f, len / 2f);
+        rot.transform(c);
+        return new Transformation(new Vector3f(pos).sub(c), new Quaternionf(rot),
+                new Vector3f(thickness, height, len), new Quaternionf());
+    }
+
+    /** A solid glowing bar between two points that thins away over {@code life} ticks. */
+    public void beam(Location from, Location to, float thickness, Material mat, int life) {
+        if (!solid()) return;
+        Vector d = to.toVector().subtract(from.toVector());
+        float len = (float) d.length();
+        if (len < 0.05f) return;
+        Vector3f dir = new Vector3f((float) (d.getX() / len), (float) (d.getY() / len), (float) (d.getZ() / len));
+        Quaternionf rot = new Quaternionf().rotationTo(new Vector3f(0f, 0f, 1f), dir);
+        BlockDisplay bd = spawnBlock(from, mat, bar(rot, thickness, len));
+        retire(bd, life, bar(rot, 0.02f, len));
+    }
+
+    /** A jagged lightning bolt made of solid segments, with a wide translucent glow around a bright core. */
+    public void bolt(Location top, Location bottom, float thickness, Material core, Material glass, int life) {
+        if (!solid()) return;
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        int segs = Math.max(4, (int) (top.distance(bottom) / 3.0));
+        Vector span = bottom.toVector().subtract(top.toVector());
+        Location prev = top.clone();
+        for (int i = 1; i <= segs; i++) {
+            Location next = top.clone().add(span.clone().multiply(i / (double) segs));
+            if (i < segs) next.add((rnd.nextDouble() - 0.5) * 2.4, 0.0, (rnd.nextDouble() - 0.5) * 2.4);
+            beam(prev, next, thickness * 2.6f, glass, life);
+            beam(prev, next, thickness, core, life);
+            prev = next;
+        }
+    }
+
+    /** A ring of solid segments sweeping from {@code radius0} to {@code radius1} (outward or inward). */
+    public void shockRing(Location c, double radius0, double radius1, float height, float thickness,
+                          Material mat, int life) {
+        if (!solid()) return;
+        int segs = 20;
+        for (int i = 0; i < segs; i++) {
+            double a = i * (Math.PI * 2 / segs);
+            Vector3f tangent = new Vector3f((float) -Math.sin(a), 0f, (float) Math.cos(a));
+            Quaternionf rot = new Quaternionf().rotationTo(new Vector3f(0f, 0f, 1f), tangent);
+            float len0 = (float) (2 * Math.PI * Math.max(0.1, radius0) / segs * 1.2);
+            float len1 = (float) (2 * Math.PI * Math.max(0.1, radius1) / segs * 1.2);
+            Vector3f pos0 = new Vector3f((float) (Math.cos(a) * radius0), 0f, (float) (Math.sin(a) * radius0));
+            Vector3f pos1 = new Vector3f((float) (Math.cos(a) * radius1), 0f, (float) (Math.sin(a) * radius1));
+            BlockDisplay bd = spawnBlock(c, mat, slab(rot, pos0, thickness, height, len0));
+            retire(bd, life, slab(rot, pos1, thickness, 0.02f, len1));
+        }
+    }
+
+    /** A crystal that shoots up out of the ground, lingers, then shrinks away. */
+    public void spike(Location base, float height, float width, Material mat, int growTicks, int life) {
+        if (!solid()) return;
+        ThreadLocalRandom rnd = ThreadLocalRandom.current();
+        Quaternionf rot = new Quaternionf().rotationXYZ((float) ((rnd.nextDouble() - 0.5) * 0.5),
+                (float) (rnd.nextDouble() * Math.PI), (float) ((rnd.nextDouble() - 0.5) * 0.5));
+        BlockDisplay bd = spawnBlock(base, mat, spikeShape(rot, width, 0.05f));
+        later(1, () -> {
+            if (!bd.isValid()) return;
+            bd.setInterpolationDelay(0);
+            bd.setInterpolationDuration(Math.max(1, growTicks));
+            bd.setTransformation(spikeShape(rot, width, height));
+        });
+        later(Math.max(growTicks + 2, life), () -> retire(bd, 6, spikeShape(rot, width, 0.02f)));
+    }
+
+    private Transformation spikeShape(Quaternionf rot, float width, float height) {
+        return new Transformation(new Vector3f(-width / 2f, 0f, -width / 2f), new Quaternionf(rot),
+                new Vector3f(width, height, width), new Quaternionf());
+    }
+
+    /** A solid cube that blooms outward from a point while spinning, then pops. */
+    public void bloom(Location centre, Material mat, float size, int life) {
+        if (!solid()) return;
+        BlockDisplay bd = spawnBlock(centre, mat, cube(0.1f, new Quaternionf()));
+        retire(bd, life, cube(size, new Quaternionf().rotationXYZ(0.8f, 1.2f, 0.4f)));
+    }
+
+    /** A solid cube that spins and collapses to nothing, like something being sucked in. */
+    public void collapse(Location centre, Material mat, float size, int life) {
+        if (!solid()) return;
+        BlockDisplay bd = spawnBlock(centre, mat, cube(size, new Quaternionf()));
+        retire(bd, life, cube(0.05f, new Quaternionf().rotationXYZ(1.0f, 1.6f, 0.6f)));
+    }
+
     // ------------------------------------------------------------------ composite effects
 
     /** An "X" slash through a point, drawn in the weapon's colours. */
@@ -243,6 +433,16 @@ public final class LegendaryFx {
         Consumer<Location> b = combo(dust(w.rgbA, w.rgbB, 1.2f, 1, 0.0), particle(Particle.CRIT, 1, 0.02, 0.05));
         line(centre.clone().add(-size, size, -size * 0.5), centre.clone().add(size, -size, size * 0.5), 0.2, b);
         line(centre.clone().add(size, size, -size * 0.5), centre.clone().add(-size, -size, size * 0.5), 0.2, b);
+        if (solid()) {
+            Location a1 = centre.clone().add(-size, size, -size * 0.5);
+            Location a2 = centre.clone().add(size, -size, size * 0.5);
+            Location b1 = centre.clone().add(size, size, -size * 0.5);
+            Location b2 = centre.clone().add(-size, -size, size * 0.5);
+            beam(a1, a2, 0.16f, glass(w), 8);
+            beam(a1, a2, 0.07f, core(w), 7);
+            beam(b1, b2, 0.16f, glass(w), 8);
+            beam(b1, b2, 0.07f, core(w), 7);
+        }
     }
 
     /** Random "stars" joined by lines, centred on a point. */
@@ -255,7 +455,11 @@ public final class LegendaryFx {
             Location pt = c.clone().add((rnd.nextDouble() - 0.5) * 3.0, (rnd.nextDouble() - 0.5) * 2.0,
                     (rnd.nextDouble() - 0.5) * 3.0);
             star.accept(pt);
-            if (prev != null) line(prev, pt, 0.3, lineBrush);
+            bloom(pt, core(w), 0.22f, 18);
+            if (prev != null) {
+                line(prev, pt, 0.3, lineBrush);
+                beam(prev, pt, 0.06f, core(w), 24);
+            }
             prev = pt;
         }
     }
@@ -267,6 +471,11 @@ public final class LegendaryFx {
         Consumer<Location> smoke = particle(Particle.SMOKE, 1, 0.1, 0.02);
         world.spawnParticle(Particle.EXPLOSION, at, 2, 0.3, 0.3, 0.3, 0);
         debris(Material.MAGMA_BLOCK, 30, 0.6).accept(at);
+        if (solid()) {
+            bloom(at, glass(w), (float) radius * 2.2f, 7);
+            bloom(at, core(w), (float) radius * 1.0f, 6);
+            shockRing(at.clone().add(0, 0.1, 0), 0.5, radius, 0.25f, 0.4f, core(w), 8);
+        }
         sound(at, Sound.ENTITY_LIGHTNING_BOLT_IMPACT, 1.5f, 1.4f);
         sound(at, Sound.ENTITY_BLAZE_SHOOT, 1.5f, 0.5f);
         animate(6, t -> {
@@ -284,6 +493,8 @@ public final class LegendaryFx {
     public void beacon(Location base, LegendaryWeapon w) {
         Consumer<Location> b = signature(w, 1, 0.05);
         column(base, 7.0, 0.7, b);
+        beam(base, base.clone().add(0, 9, 0), 0.3f, glass(w), 12);
+        beam(base, base.clone().add(0, 9, 0), 0.1f, core(w), 12);
         sp(Particle.END_ROD, base.clone().add(0, 0.4, 0), 2, 0.2, 0.2, 0.2, 0.02);
     }
 
@@ -294,6 +505,9 @@ public final class LegendaryFx {
         world.strikeLightningEffect(base);
         Consumer<Location> sig = signature(w, 2, 0.03);
         sound(base, Sound.BLOCK_BEACON_ACTIVATE, 2f, 1.2f);
+        beam(base, base.clone().add(0, 12, 0), 1.2f, glass(w), 40);
+        beam(base, base.clone().add(0, 12, 0), 0.5f, core(w), 40);
+        shockRing(base.clone().add(0, 0.1, 0), 0.5, 6.0, 0.3f, 0.4f, core(w), 20);
         animate(40, t -> {
             for (int arm = 0; arm < 3; arm++) {
                 double a = t * 0.45 + arm * (Math.PI * 2 / 3);

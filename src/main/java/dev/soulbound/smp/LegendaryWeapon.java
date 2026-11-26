@@ -185,7 +185,21 @@ public enum LegendaryWeapon {
             new Object[]{Enchantment.UNBREAKING, 10, Enchantment.MENDING, 1},
             "CNC/TLT/CNC",
             new Object[]{'C', Material.COPPER_BLOCK, 'N', Material.NETHER_STAR, 'T', Material.TOTEM_OF_UNDYING,
-                    'L', Material.LIGHTNING_ROD});
+                    'L', Material.LIGHTNING_ROD}),
+
+    GOD_ELYTRA("god_elytra", "God Elytra", "#ffe082", "#40c4ff", Material.ELYTRA, Particle.END_ROD, Particle.CLOUD, false, 4, 1.0,
+            "Sky Thrust",
+            List.of("Press the swap-hand key (F) while gliding",
+                    "to blast forward. Hold sneak to air-brake."),
+            List.of("Dives accelerate hard; level flight holds speed",
+                    "Altitude lost while gliding counts as fall distance",
+                    "Mace hits while gliding become Sky Smashes:",
+                    "huge bonus damage, a shockwave and a rebound",
+                    "No fall or flight-impact damage"),
+            new Object[]{Enchantment.UNBREAKING, 10, Enchantment.MENDING, 1},
+            "NFN/PEP/NTN",
+            new Object[]{'N', Material.NETHER_STAR, 'F', Material.FIREWORK_ROCKET, 'P', Material.PHANTOM_MEMBRANE,
+                    'E', Material.ELYTRA, 'T', Material.TOTEM_OF_UNDYING});
 
     public final String id;
     public final String display;
@@ -240,6 +254,11 @@ public enum LegendaryWeapon {
     /** MiniMessage for text shaded from this weapon's first colour to its second. */
     public String gradient(String text) {
         return "<gradient:" + colorA + ":" + colorB + ">" + text + "</gradient>";
+    }
+
+    /** How this item's power is triggered, for the lore. */
+    public String activation() {
+        return this == GOD_ELYTRA ? "Swap-hand key while gliding" : "Right-click";
     }
 
     /** The weapon's display name, bold, in its gradient. */
