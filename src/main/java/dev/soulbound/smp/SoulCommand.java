@@ -16,7 +16,7 @@ import java.util.Locale;
 public final class SoulCommand implements TabExecutor {
 
     private static final List<String> PLAYER_SUBS = List.of("status", "event", "time");
-    private static final List<String> ADMIN_SUBS = List.of("admin", "revive", "eliminate", "reset", "givebeacon", "giveseal", "legendary", "ritual", "reload");
+    private static final List<String> ADMIN_SUBS = List.of("admin", "revive", "eliminate", "reset", "givebeacon", "giveseal", "legendary", "ritual", "pack", "reload");
 
     private final SoulboundPlugin plugin;
 
@@ -51,6 +51,13 @@ public final class SoulCommand implements TabExecutor {
             case "giveseal" -> giveSeal(sender, args);
             case "legendary" -> legendary(sender, args);
             case "ritual" -> ritual(sender, args);
+            case "pack" -> {
+                if (args.length > 1 && args[1].equalsIgnoreCase("status")) msg.send(sender, plugin.packs().status());
+                else {
+                    msg.send(sender, "<gray>Checking the resource pack...");
+                    plugin.packs().checkNow(sender);
+                }
+            }
             case "reload" -> {
                 plugin.reload();
                 msg.send(sender, "<green>Config reloaded.");
@@ -371,6 +378,7 @@ public final class SoulCommand implements TabExecutor {
                 case "time" -> { if (admin(sender)) out.addAll(List.of("interval", "duration")); }
                 case "ritual" -> out.addAll(List.of("info", "cancel"));
                 case "legendary" -> out.addAll(List.of("list", "give", "reset"));
+                case "pack" -> { if (admin(sender)) out.addAll(List.of("check", "status")); }
                 default -> { }
             }
         } else if (args.length == 3 && args[0].equalsIgnoreCase("time") && admin(sender)) {

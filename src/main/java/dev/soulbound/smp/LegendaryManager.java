@@ -74,6 +74,10 @@ public final class LegendaryManager {
         }
         m.setUnbreakable(true);
         m.getPersistentDataContainer().set(tagKey, PersistentDataType.STRING, w.id);
+        // resource pack hook: assets/minecraft/items/<material>.json picks the model from this string
+        var cmd = m.getCustomModelDataComponent();
+        cmd.setStrings(java.util.List.of(w.id));
+        m.setCustomModelDataComponent(cmd);
         it.setItemMeta(m);
         return it;
     }
@@ -83,6 +87,22 @@ public final class LegendaryManager {
         if (it == null || it.getType().isAir() || !it.hasItemMeta()) return null;
         String id = it.getItemMeta().getPersistentDataContainer().get(tagKey, PersistentDataType.STRING);
         return id == null ? null : LegendaryWeapon.byId(id);
+    }
+
+    /** Older stacks (crafted before the pack existed) get their model tag added. */
+    public void refreshModel(ItemStack it) {
+        LegendaryWeapon w = identify(it);
+        if (w == null) return;
+        ItemMeta m = it.getItemMeta();
+        var cmd = m.getCustomModelDataComponent();
+        if (cmd.getStrings().contains(w.id)) return;
+        cmd.setStrings(java.util.List.of(w.id));
+        m.setCustomModelDataComponent(cmd);
+        it.setItemMeta(m);
+    }
+
+    public void refreshModels(Player p) {
+        for (ItemStack it : p.getInventory().getContents()) refreshModel(it);
     }
 
     public boolean isLegendary(ItemStack it) { return identify(it) != null; }

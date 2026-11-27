@@ -57,6 +57,8 @@ public final class PlayerListener implements Listener {
         plugin.legendary().discover(p);
         plugin.rituals().onJoin(p);
         plugin.events().onJoin(p);
+        plugin.legendary().refreshModels(p);
+        plugin.packs().sendOnJoin(p);
 
         if (r.permanent) {
             p.kick(Component.text("You are permanently eliminated from Soulbound SMP.", NamedTextColor.DARK_RED));

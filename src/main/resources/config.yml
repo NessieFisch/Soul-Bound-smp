@@ -400,3 +400,19 @@ events:
   magnetic-pull:
     radius: 6.0
     speed: 0.35
+
+# ------------------------------------------------------------------
+#  RESOURCE PACK (3D models for Benediction + Malediction)
+# ------------------------------------------------------------------
+resource-pack:
+  enabled: true
+  # DIRECT download link to the pack zip (SoulboundMythicPack.zip). Examples:
+  #   GitHub raw:  https://raw.githubusercontent.com/<you>/<repo>/main/pack/SoulboundMythicPack.zip
+  #   Dropbox:     https://www.dropbox.com/s/<id>/SoulboundMythicPack.zip?dl=1
+  # Replace the file at that link and every online player gets the new pack within
+  # check-interval-minutes. Or run /sb pack to push it right now.
+  url: ""
+  check-interval-minutes: 5
+  # true = players who decline are kicked. false = they just see the normal netherite sword.
+  required: false
+  prompt: "<gray>Soulbound SMP mythic sword models"

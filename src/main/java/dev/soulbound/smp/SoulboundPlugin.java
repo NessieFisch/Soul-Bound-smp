@@ -16,6 +16,7 @@ public final class SoulboundPlugin extends JavaPlugin {
     private RitualManager rituals;
     private EventManager events;
     private AdminGui adminGui;
+    private ResourcePackManager packs;
 
     @Override
     public void onEnable() {
@@ -71,6 +72,9 @@ public final class SoulboundPlugin extends JavaPlugin {
             bcCmd.setTabCompleter(bc);
         }
 
+        packs = new ResourcePackManager(this);
+        packs.start();
+
         rituals.resume();
         events.start();
         getLogger().info("Soulbound SMP enabled.");
@@ -84,6 +88,7 @@ public final class SoulboundPlugin extends JavaPlugin {
         if (seal != null) seal.unregisterRecipe();
         if (abilities != null) abilities.shutdown();
         if (legendary != null) legendary.unregisterRecipes();
+        if (packs != null) packs.stop();
         if (data != null) data.save();
     }
 
@@ -97,6 +102,7 @@ public final class SoulboundPlugin extends JavaPlugin {
         beacon.registerRecipe();
         seal.registerRecipe();
         legendary.registerRecipes();
+        if (packs != null) packs.start();
     }
 
     /** Permanently bans a player by name using the vanilla ban command. */
@@ -117,4 +123,5 @@ public final class SoulboundPlugin extends JavaPlugin {
     public RitualManager rituals() { return rituals; }
     public EventManager events() { return events; }
     public AdminGui adminGui() { return adminGui; }
+    public ResourcePackManager packs() { return packs; }
 }
