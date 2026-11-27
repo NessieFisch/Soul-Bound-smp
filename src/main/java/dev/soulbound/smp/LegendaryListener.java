@@ -16,6 +16,8 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.EntityToggleGlideEvent;
 import org.bukkit.event.entity.ItemSpawnEvent;
@@ -116,6 +118,30 @@ public final class LegendaryListener implements Listener {
     @EventHandler(ignoreCancelled = true)
     public void onSwing(PlayerAnimationEvent e) {
         if (e.getAnimationType() == PlayerAnimationType.ARM_SWING) plugin.abilities().onSwing(e.getPlayer());
+    }
+
+    // ------------------------------------------------------------------ mythic extras
+
+    /** Divine Intervention (Benediction) and Thorns of Doom (Malediction). */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onWielderHurt(EntityDamageEvent e) {
+        if (e.getEntity() instanceof Player p) plugin.abilities().onWielderHurt(p, e);
+    }
+
+    /** Legion members and their owner never hurt each other. */
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void onLegionFriendlyFire(EntityDamageByEntityEvent e) {
+        if (plugin.abilities().sameLegion(e.getDamager(), e.getEntity())) e.setCancelled(true);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onLegionTarget(EntityTargetLivingEntityEvent e) {
+        plugin.abilities().onMinionTarget(e);
+    }
+
+    @EventHandler
+    public void onLegionDeath(EntityDeathEvent e) {
+        plugin.abilities().onMinionDeath(e);
     }
 
     // ------------------------------------------------------------------ passives

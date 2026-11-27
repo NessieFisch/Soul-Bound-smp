@@ -1,6 +1,7 @@
 package dev.soulbound.smp;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -21,15 +22,23 @@ import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.LargeFireball;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Tameable;
 import org.bukkit.entity.Trident;
+import org.bukkit.entity.Vindicator;
+import org.bukkit.entity.WitherSkeleton;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
+import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.LeatherArmorMeta;
+import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -93,6 +102,13 @@ public final class LegendaryAbilities {
 
     private record Landing(Player player, LegendaryWeapon weapon, double fall) { }
 
+    /** A summoned legion member: who owns it, when it vanishes, which mythic called it. */
+    private record Minion(UUID owner, long expires, LegendaryWeapon weapon) { }
+
+    private static final long LEGION_LIFETIME_MS = 30_000L;
+    private static final int LEGION_SIZE = 4;
+    private static final long INTERVENTION_COOLDOWN_MS = 180_000L;
+
     private final SoulboundPlugin plugin;
     private final LegendaryFx fx;
     private final NamespacedKey projKey;
@@ -111,6 +127,14 @@ public final class LegendaryAbilities {
     /** God Elytra: the highest point of the current glide, so altitude lost counts as fall distance. */
     private final Map<UUID, Double> peak = new HashMap<>();
     private final Map<UUID, Long> lastBoom = new HashMap<>();
+    /** Mythic legions: summoned minion -> its owner and lifetime. */
+    private final Map<UUID, Minion> minions = new HashMap<>();
+    /** Mythic legions: when each owner may summon again. */
+    private final Map<UUID, Long> legionReady = new HashMap<>();
+    /** Benediction: hits landed since the last Radiant Burst. */
+    private final Map<UUID, Integer> blessedHits = new HashMap<>();
+    /** Benediction: when Divine Intervention is available again. */
+    private final Map<UUID, Long> interventionReady = new HashMap<>();
     /** True while a power is dealing damage itself, so our own damage hooks do not re-trigger. */
     private boolean internal;
     private BukkitTask task;
@@ -140,6 +164,14 @@ public final class LegendaryAbilities {
         drops.clear();
         peak.clear();
         lastBoom.clear();
+        for (UUID id : new ArrayList<>(minions.keySet())) {
+            Entity en = Bukkit.getEntity(id);
+            if (en != null) en.remove();
+        }
+        minions.clear();
+        legionReady.clear();
+        blessedHits.clear();
+        interventionReady.clear();
         fx.cleanup();
     }
 
@@ -158,6 +190,7 @@ public final class LegendaryAbilities {
             tickHoming();
             tickTrails();
             tickElytra();
+            tickLegion();
             if (fx.enabled("aura")) auras();
             if (ticks % 5 == 0) {
                 passives();
@@ -256,8 +289,10 @@ public final class LegendaryAbilities {
                 // the God of Blessings shrugs off every curse, including the world events
                 for (PotionEffectType bad : CURSES) p.removePotionEffect(bad);
                 p.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 60, 0, true, false, false));
+                if (ticks % 10 == 0) sanctifiedGround(p);
             } else if (w == LegendaryWeapon.MALEDICTION) {
                 p.removePotionEffect(PotionEffectType.WITHER);
+                if (ticks % 10 == 0) witheringPresence(p);
             }
         }
     }
@@ -528,6 +563,10 @@ public final class LegendaryAbilities {
     // ------------------------------------------------------------------ right-click powers
 
     public void trigger(Player p, LegendaryWeapon w) {
+        if (w.mythic() && p.isSneaking()) { // sneak + right-click: call the legion instead of the main power
+            summonLegion(p, w);
+            return;
+        }
         long left = plugin.legendary().cooldownLeftMs(p, w);
         if (left > 0) {
             say(p, w.color + w.power + " <gray>is recharging: <white>" + ((left + 999) / 1000) + "s");
@@ -1120,16 +1159,16 @@ public final class LegendaryAbilities {
         final LegendaryWeapon b = LegendaryWeapon.BENEDICTION;
         final Location c = p.getLocation();
         final World w = c.getWorld();
-        final double radius = 14.0;
+        final double radius = 12.0;
 
         AttributeInstance max = p.getAttribute(Attribute.MAX_HEALTH);
         heal(p, max != null ? max.getValue() : 20.0);
         for (PotionEffectType bad : CURSES) p.removePotionEffect(bad);
-        p.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 400, 4));
+        p.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 300, 3));
         p.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 200, 2));
-        p.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, 300, 1));
-        p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 300, 1));
-        p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 300, 1));
+        p.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, 240, 1));
+        p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 240, 1));
+        p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 240, 1));
 
         int blessed = 0;
         int smitten = 0;
@@ -1145,7 +1184,7 @@ public final class LegendaryAbilities {
                 blessed++;
             } else if (en instanceof Enemy && validTarget(p, en)) {
                 LivingEntity le = (LivingEntity) en;
-                hurt(p, le, 20.0);
+                hurt(p, le, 16.0);
                 le.setFireTicks(100);
                 if (smitten < 8) {
                     Location at = le.getLocation();
@@ -1179,7 +1218,7 @@ public final class LegendaryAbilities {
         final LegendaryWeapon m = LegendaryWeapon.MALEDICTION;
         final Location c = p.getLocation();
         final World w = c.getWorld();
-        final double radius = 18.0;
+        final double radius = 16.0;
 
         int cursed = 0;
         List<Location> marks = new ArrayList<>();
@@ -1187,16 +1226,16 @@ public final class LegendaryAbilities {
             if (!validTarget(p, en)) continue;
             LivingEntity le = (LivingEntity) en;
             if (le.getLocation().distance(c) > radius) continue;
-            hurt(p, le, 8.0);
-            le.addPotionEffect(new PotionEffect(PotionEffectType.WITHER, 200, 2));
-            le.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 200, 1));
+            hurt(p, le, 7.0);
+            le.addPotionEffect(new PotionEffect(PotionEffectType.WITHER, 140, 2));
+            le.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 160, 1));
             le.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 120, 1));
-            le.addPotionEffect(new PotionEffect(PotionEffectType.HUNGER, 200, 2));
+            le.addPotionEffect(new PotionEffect(PotionEffectType.HUNGER, 160, 1));
             le.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 200, 0));
             cursed++;
             if (marks.size() < 8) marks.add(le.getLocation());
         }
-        heal(p, Math.min(20.0, cursed * 3.0));
+        heal(p, Math.min(16.0, cursed * 2.5));
 
         Consumer<Location> dark = fx.combo(fx.signature(m, 2, 0.06), fx.particle(Particle.SOUL_FIRE_FLAME, 1, 0.04, 0.02));
         fx.animate(16, t -> {
@@ -1217,6 +1256,278 @@ public final class LegendaryAbilities {
         fx.sound(c, Sound.ENTITY_WITHER_SPAWN, 0.8f, 0.6f);
         say(p, m.color + "<bold>DOOM DECREE!</bold> <gray>cursed <white>" + cursed + "<gray> soul(s)");
         return true;
+    }
+
+
+    // ------------------------------------------------------------------ mythic extras
+
+    /** Benediction, every 5th hit: a burst of holy light around the target. */
+    private void radiantBurst(Player p, LivingEntity center, Location hc) {
+        final LegendaryWeapon b = LegendaryWeapon.BENEDICTION;
+        for (Entity en : center.getNearbyEntities(3.5, 2.0, 3.5)) {
+            if (en.equals(center) || !validTarget(p, en) || minions.containsKey(en.getUniqueId())) continue;
+            hurt(p, (LivingEntity) en, 5.0);
+        }
+        heal(p, 2.0);
+        fx.expandingRing(hc.clone().subtract(0, 0.5, 0), 3.5, 4, 28, fx.signature(b, 2, 0.05));
+        fx.sp(Particle.TOTEM_OF_UNDYING, hc, 25, 0.5, 0.6, 0.5, 0.25);
+        fx.sound(hc, Sound.BLOCK_BEACON_POWER_SELECT, 0.8f, 1.6f);
+        fx.sound(hc, Sound.ITEM_TOTEM_USE, 0.4f, 1.6f);
+    }
+
+    /** Benediction passive: undead near the wielder catch fire. Runs about once a second. */
+    private void sanctifiedGround(Player p) {
+        boolean any = false;
+        for (Entity en : p.getNearbyEntities(6.0, 4.0, 6.0)) {
+            if (!(en instanceof LivingEntity le) || !UNDEAD.contains(le.getType()) || !validTarget(p, en)) continue;
+            if (le.getFireTicks() < 40) le.setFireTicks(40);
+            any = true;
+        }
+        if (any || ticks % 30 == 0) {
+            fx.ring(p.getLocation().add(0, 0.1, 0), 6.0, fx.n(28), fx.particle(Particle.END_ROD, 1, 0.0, 0.0));
+        }
+    }
+
+    /** Malediction passive: enemies hugging the wielder are slowed. Runs about once a second. */
+    private void witheringPresence(Player p) {
+        Location c = p.getLocation();
+        for (Entity en : p.getNearbyEntities(4.0, 3.0, 4.0)) {
+            if (!(en instanceof Enemy || en instanceof Player) || !validTarget(p, en)) continue;
+            if (minions.containsKey(en.getUniqueId())) continue;
+            if (en.getLocation().distance(c) > 4.0) continue;
+            ((LivingEntity) en).addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 30, 0, true, true, false));
+        }
+        fx.ring(c.clone().add(0, 0.1, 0), 4.0, fx.n(20), fx.particle(Particle.SOUL_FIRE_FLAME, 1, 0.0, 0.0));
+    }
+
+    /** Malediction: a cursed foe died to the blade, so its curses leap to everything nearby. */
+    private void soulPlague(Player p, LivingEntity dead, Location hc) {
+        final LegendaryWeapon m = LegendaryWeapon.MALEDICTION;
+        int spread = 0;
+        for (Entity en : dead.getNearbyEntities(6.0, 3.0, 6.0)) {
+            if (!validTarget(p, en) || minions.containsKey(en.getUniqueId())) continue;
+            LivingEntity le = (LivingEntity) en;
+            le.addPotionEffect(new PotionEffect(PotionEffectType.WITHER, 100, 0));
+            le.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 100, 0));
+            le.addPotionEffect(new PotionEffect(CURSES.get(ThreadLocalRandom.current().nextInt(CURSES.size())), 100, 0));
+            fx.sp(Particle.SOUL_FIRE_FLAME, le.getLocation().add(0, 1, 0), 12, 0.3, 0.5, 0.3, 0.05);
+            spread++;
+        }
+        heal(p, 3.0);
+        fx.expandingRing(hc.clone().subtract(0, 0.5, 0), 6.0, 5, 36, fx.combo(fx.signature(m, 2, 0.05),
+                fx.particle(Particle.SOUL_FIRE_FLAME, 1, 0.03, 0.02)));
+        fx.sound(hc, Sound.ENTITY_WITHER_DEATH, 0.35f, 1.8f);
+        if (spread > 0) say(p, m.color + "<bold>SOUL PLAGUE!</bold> <gray>curses spread to <white>" + spread);
+    }
+
+    /**
+     * Called for every damage event against a player: Benediction's Divine Intervention (a lethal hit is
+     * survived once every three minutes) and Malediction's Thorns of Doom (attackers may be cursed).
+     */
+    public void onWielderHurt(Player p, EntityDamageEvent e) {
+        LegendaryWeapon w = plugin.legendary().held(p);
+        if (w == LegendaryWeapon.BENEDICTION) {
+            EntityDamageEvent.DamageCause cause = e.getCause();
+            if (cause == EntityDamageEvent.DamageCause.VOID || cause == EntityDamageEvent.DamageCause.KILL
+                    || cause == EntityDamageEvent.DamageCause.SUICIDE) return;
+            if (e.getFinalDamage() < p.getHealth()) return;
+            long now = System.currentTimeMillis();
+            Long ready = interventionReady.get(p.getUniqueId());
+            if (ready != null && ready > now) return;
+            interventionReady.put(p.getUniqueId(), now + INTERVENTION_COOLDOWN_MS);
+            e.setCancelled(true);
+            AttributeInstance max = p.getAttribute(Attribute.MAX_HEALTH);
+            p.setHealth(Math.min(max != null ? max.getValue() : 20.0, 10.0));
+            p.setFireTicks(0);
+            for (PotionEffectType bad : CURSES) p.removePotionEffect(bad);
+            p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 60, 4));
+            p.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 100, 2));
+            p.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 200, 1));
+            Location c = p.getLocation();
+            fx.sp(Particle.TOTEM_OF_UNDYING, c.clone().add(0, 1, 0), 80, 0.5, 1.0, 0.5, 0.5);
+            fx.expandingRing(c, 5.0, 5, 36, fx.signature(w, 2, 0.05));
+            if (fx.solid()) fx.beam(c, c.clone().add(0, 30, 0), 1.4f, fx.glass(w), 24);
+            fx.sound(c, Sound.ITEM_TOTEM_USE, 1.5f, 1.0f);
+            fx.sound(c, Sound.BLOCK_BEACON_ACTIVATE, 1.2f, 1.6f);
+            say(p, w.color + "<bold>DIVINE INTERVENTION!</bold> <gray>you were spared (3 min)");
+        } else if (w == LegendaryWeapon.MALEDICTION && e instanceof EntityDamageByEntityEvent ede) {
+            Entity src = ede.getDamager();
+            if (src instanceof Projectile pr && pr.getShooter() instanceof Entity shooter) src = shooter;
+            if (!(src instanceof LivingEntity le) || le.equals(p) || !validTarget(p, le)) return;
+            if (ThreadLocalRandom.current().nextDouble() >= 0.35) return;
+            le.addPotionEffect(new PotionEffect(CURSES.get(ThreadLocalRandom.current().nextInt(CURSES.size())), 100, 0));
+            fx.sphere(le.getLocation().add(0, 1, 0), 0.7, fx.n(14), fx.combo(fx.signature(w, 1, 0.03),
+                    fx.particle(Particle.SOUL_FIRE_FLAME, 1, 0.03, 0.02)));
+            fx.sound(le.getLocation(), Sound.ENTITY_ELDER_GUARDIAN_CURSE, 0.3f, 1.8f);
+        }
+    }
+
+    // ------------------------------------------------------------------ mythic legions
+
+    /** Sneak + right-click with a mythic: golden knights (Benediction) or wraiths (Malediction) fight for you. */
+    private boolean summonLegion(Player p, LegendaryWeapon w) {
+        long now = System.currentTimeMillis();
+        Long ready = legionReady.get(p.getUniqueId());
+        if (ready != null && ready > now) {
+            String name = w == LegendaryWeapon.BENEDICTION ? "Heavenly Host" : "Soul Legion";
+            say(p, w.color + name + " <gray>is recharging: <white>" + ((ready - now + 999) / 1000) + "s");
+            fx.sound(p.getLocation(), Sound.BLOCK_FIRE_EXTINGUISH, 0.5f, 1.6f);
+            return false;
+        }
+        despawnLegion(p.getUniqueId());
+        boolean holy = w == LegendaryWeapon.BENEDICTION;
+        Location c = p.getLocation();
+        World world = c.getWorld();
+        for (int i = 0; i < LEGION_SIZE; i++) {
+            double a = i * (Math.PI * 2 / LEGION_SIZE);
+            Location at = c.clone().add(Math.cos(a) * 2.5, 0, Math.sin(a) * 2.5);
+            if (at.getBlock().getType().isSolid() || at.clone().add(0, 1, 0).getBlock().getType().isSolid()) at = c.clone();
+            Mob m = holy
+                    ? world.spawn(at, Vindicator.class, v -> dressMinion(v, p, w))
+                    : world.spawn(at, WitherSkeleton.class, v -> dressMinion(v, p, w));
+            minions.put(m.getUniqueId(), new Minion(p.getUniqueId(), now + LEGION_LIFETIME_MS, w));
+            fx.sphere(at.clone().add(0, 1, 0), 1.0, fx.n(20), fx.signature(w, 2, 0.05));
+            if (fx.solid()) fx.bolt(at.clone().add(0, 14, 0), at, 0.3f, fx.core(w), fx.glass(w), 8);
+        }
+        fx.expandingRing(c.clone().add(0, 0.1, 0), 5.0, 5, 36, fx.signature(w, 2, 0.05));
+        fx.sound(c, holy ? Sound.BLOCK_BEACON_ACTIVATE : Sound.ENTITY_WITHER_SPAWN, holy ? 1.2f : 0.6f, holy ? 1.5f : 1.2f);
+        fx.sound(c, Sound.ENTITY_EVOKER_PREPARE_SUMMON, 1.2f, 1.0f);
+        int cd = Math.max(0, plugin.getConfig().getInt("legendary.weapons." + w.id + ".legion-cooldown-seconds", 120));
+        legionReady.put(p.getUniqueId(), now + cd * 1000L);
+        say(p, w.color + "<bold>" + (holy ? "HEAVENLY HOST!" : "SOUL LEGION!") + "</bold> <gray>" + LEGION_SIZE + " fighters answer your call");
+        return true;
+    }
+
+    /** Armour, weapon, name and stats for one legion member; it wears the summoner's head. */
+    private void dressMinion(Mob m, Player owner, LegendaryWeapon w) {
+        boolean holy = w == LegendaryWeapon.BENEDICTION;
+        m.setPersistent(false);
+        m.setRemoveWhenFarAway(true);
+        m.setCanPickupItems(false);
+        m.customName(plugin.msg().parse(w.color + Msg.esc(owner.getName()) + (holy ? "'s Knight" : "'s Wraith")));
+        m.setCustomNameVisible(true);
+        AttributeInstance hp = m.getAttribute(Attribute.MAX_HEALTH);
+        if (hp != null) hp.setBaseValue(16.0);
+        m.setHealth(16.0);
+        AttributeInstance atk = m.getAttribute(Attribute.ATTACK_DAMAGE);
+        if (atk != null) atk.setBaseValue(4.0);
+        EntityEquipment eq = m.getEquipment();
+        if (eq == null) return;
+        ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+        if (head.getItemMeta() instanceof SkullMeta sm) {
+            sm.setOwningPlayer(owner);
+            head.setItemMeta(sm);
+        }
+        eq.setHelmet(head);
+        if (holy) {
+            eq.setChestplate(new ItemStack(Material.GOLDEN_CHESTPLATE));
+            eq.setLeggings(new ItemStack(Material.GOLDEN_LEGGINGS));
+            eq.setBoots(new ItemStack(Material.GOLDEN_BOOTS));
+            eq.setItemInMainHand(new ItemStack(Material.GOLDEN_SWORD));
+        } else {
+            eq.setChestplate(dyed(Material.LEATHER_CHESTPLATE, 0x4A148C));
+            eq.setLeggings(dyed(Material.LEATHER_LEGGINGS, 0x4A148C));
+            eq.setBoots(dyed(Material.LEATHER_BOOTS, 0x1A0033));
+            eq.setItemInMainHand(new ItemStack(Material.IRON_SWORD));
+        }
+    }
+
+    private ItemStack dyed(Material mat, int rgb) {
+        ItemStack it = new ItemStack(mat);
+        if (it.getItemMeta() instanceof LeatherArmorMeta lm) {
+            lm.setColor(Color.fromRGB(rgb));
+            it.setItemMeta(lm);
+        }
+        return it;
+    }
+
+    private void despawnLegion(UUID owner) {
+        Iterator<Map.Entry<UUID, Minion>> it = minions.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<UUID, Minion> en = it.next();
+            if (!en.getValue().owner().equals(owner)) continue;
+            Entity ent = Bukkit.getEntity(en.getKey());
+            if (ent != null) ent.remove();
+            it.remove();
+        }
+    }
+
+    private boolean isOwnMinion(Player owner, Entity en) {
+        Minion mn = minions.get(en.getUniqueId());
+        return mn != null && mn.owner().equals(owner.getUniqueId());
+    }
+
+    /** True when {@code a} and {@code b} are on the same legion side (an owner and its minion, or two of its minions). */
+    public boolean sameLegion(Entity a, Entity b) {
+        Minion ma = minions.get(a.getUniqueId());
+        Minion mb = minions.get(b.getUniqueId());
+        if (ma != null && mb != null) return ma.owner().equals(mb.owner());
+        if (ma != null) return ma.owner().equals(b.getUniqueId());
+        if (mb != null) return mb.owner().equals(a.getUniqueId());
+        return false;
+    }
+
+    public boolean isMinion(Entity en) { return minions.containsKey(en.getUniqueId()); }
+
+    /** Minions drop nothing and give no experience. */
+    public void onMinionDeath(EntityDeathEvent e) {
+        if (minions.remove(e.getEntity().getUniqueId()) == null) return;
+        e.getDrops().clear();
+        e.setDroppedExp(0);
+    }
+
+    /** Minions never pick their owner (or their siblings) as a target. */
+    public void onMinionTarget(EntityTargetLivingEntityEvent e) {
+        if (e.getTarget() != null && sameLegion(e.getEntity(), e.getTarget())) e.setCancelled(true);
+    }
+
+    private LivingEntity nearestFoe(Player owner, Location from, double range) {
+        LivingEntity best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (Entity en : from.getWorld().getNearbyEntities(from, range, range, range)) {
+            if (!(en instanceof Enemy || en instanceof Player) || !validTarget(owner, en) || isOwnMinion(owner, en)) continue;
+            double d = en.getLocation().distanceSquared(from);
+            if (d < bestDist) {
+                bestDist = d;
+                best = (LivingEntity) en;
+            }
+        }
+        return best;
+    }
+
+    /** Keeps the legion fighting: retarget, stay close to the owner, expire after 30 seconds. */
+    private void tickLegion() {
+        if (minions.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        Iterator<Map.Entry<UUID, Minion>> it = minions.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<UUID, Minion> en = it.next();
+            Minion mn = en.getValue();
+            Entity ent = Bukkit.getEntity(en.getKey());
+            if (!(ent instanceof Mob m) || !m.isValid()) {
+                it.remove();
+                continue;
+            }
+            Player owner = Bukkit.getPlayer(mn.owner());
+            if (mn.expires() < now || owner == null || !owner.isOnline() || owner.isDead()) {
+                Location at = m.getLocation().add(0, 1, 0);
+                fx.sphere(at, 0.9, fx.n(20), fx.signature(mn.weapon(), 2, 0.05));
+                fx.sound(at, Sound.ENTITY_ILLUSIONER_MIRROR_MOVE, 0.7f, 1.4f);
+                m.remove();
+                it.remove();
+                continue;
+            }
+            if (!m.getWorld().equals(owner.getWorld()) || m.getLocation().distanceSquared(owner.getLocation()) > 24.0 * 24.0) {
+                m.teleport(owner.getLocation());
+            }
+            if (ticks % 5 == 0) {
+                LivingEntity tgt = m.getTarget();
+                if (tgt == null || tgt.isDead() || !validTarget(owner, tgt) || isOwnMinion(owner, tgt)) {
+                    m.setTarget(nearestFoe(owner, m.getLocation(), 14.0));
+                }
+                fx.sp(mn.weapon().accent, m.getLocation().add(0, 1.0, 0), 2, 0.3, 0.6, 0.3, 0.01);
+            }
+        }
     }
 
     // ------------------------------------------------------------------ God Elytra
@@ -1569,20 +1880,27 @@ public final class LegendaryAbilities {
             case BENEDICTION -> {
                 if (victim instanceof LivingEntity le) {
                     if (UNDEAD.contains(le.getType())) {
-                        e.setDamage(e.getDamage() * 1.75);
+                        e.setDamage(e.getDamage() * 1.6);
                         le.setFireTicks(80);
                         fx.sp(Particle.END_ROD, hc, 20, 0.3, 0.5, 0.3, 0.12);
                     }
-                    heal(p, e.getDamage() * 0.30);
+                    heal(p, e.getDamage() * 0.25);
                     p.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 100, 1));
                     stream(hc, p, 0, fx.combo(fx.dust(w.rgbA, w.rgbB, 1.0f, 1, 0.02),
                             fx.particle(Particle.HAPPY_VILLAGER, 1, 0.02, 0.0)));
+                    int streak = blessedHits.merge(p.getUniqueId(), 1, Integer::sum);
+                    if (streak >= 5) {
+                        blessedHits.remove(p.getUniqueId());
+                        radiantBurst(p, le, hc);
+                    }
                 }
             }
             case MALEDICTION -> {
                 if (victim instanceof LivingEntity le) {
                     int curses = countCurses(le);
-                    if (curses > 0) e.setDamage(e.getDamage() * (1.0 + Math.min(0.6, curses * 0.12)));
+                    if (curses > 0) e.setDamage(e.getDamage() * (1.0 + Math.min(0.5, curses * 0.10)));
+                    // a killing blow on a cursed foe spreads the curses to everything nearby
+                    if (curses > 0 && le.getHealth() - e.getFinalDamage() <= 0) soulPlague(p, le, hc);
                     PotionEffectType pick = CURSES.get(ThreadLocalRandom.current().nextInt(CURSES.size()));
                     le.addPotionEffect(new PotionEffect(pick, 100, 0));
                     Consumer<Location> curse = fx.combo(fx.dust(w.rgbA, w.rgbB, 1.2f, 1, 0.02),

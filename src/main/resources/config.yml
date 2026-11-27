@@ -252,7 +252,8 @@ legendary:
     benediction:
       craftable: true
       max-crafted: 1
-      cooldown-seconds: 60
+      cooldown-seconds: 65
+      legion-cooldown-seconds: 120   # sneak + right-click: summon the legion
       recipe:
         shape: ["NBN", "TST", "NEN"]
         ingredients:
@@ -264,7 +265,8 @@ legendary:
     malediction:
       craftable: true
       max-crafted: 1
-      cooldown-seconds: 60
+      cooldown-seconds: 65
+      legion-cooldown-seconds: 120   # sneak + right-click: summon the legion
       recipe:
         shape: ["NWN", "TST", "NDN"]
         ingredients:
