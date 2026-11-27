@@ -52,7 +52,8 @@ public final class LegendaryManager {
         m.displayName(line(w.title()));
 
         List<Component> lore = new ArrayList<>();
-        lore.add(line(w.gradient("\u2726 LEGENDARY \u2726")));
+        lore.add(line(w.gradient(w.mythic() ? "\u2726\u2726 MYTHIC \u2726\u2726" : "\u2726 LEGENDARY \u2726")));
+        if (w.epithet() != null) lore.add(line(w.color + "<italic>" + w.epithet()));
         lore.add(line(""));
         if (w.power != null) {
             lore.add(line(w.color + "<bold>" + w.power + "</bold> <dark_gray>\u2022 <gray>" + w.activation() + " <dark_gray>\u2022 <gray>"

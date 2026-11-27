@@ -199,7 +199,38 @@ public enum LegendaryWeapon {
             new Object[]{Enchantment.UNBREAKING, 10, Enchantment.MENDING, 1},
             "NFN/PEP/NTN",
             new Object[]{'N', Material.NETHER_STAR, 'F', Material.FIREWORK_ROCKET, 'P', Material.PHANTOM_MEMBRANE,
-                    'E', Material.ELYTRA, 'T', Material.TOTEM_OF_UNDYING});
+                    'E', Material.ELYTRA, 'T', Material.TOTEM_OF_UNDYING}),
+
+    // ---------------------------------------------------------------- MYTHIC tier (above legendary)
+
+    BENEDICTION("benediction", "Benediction", "#fff9c4", "#ffb300", Material.NETHERITE_SWORD, Particle.END_ROD, Particle.HAPPY_VILLAGER, true, 60, 1.4,
+            "Divine Grace",
+            List.of("Fully heal and gain Absorption V, Regeneration,",
+                    "Strength, Resistance and Speed. Players within",
+                    "14 blocks are blessed too; hostile mobs are smitten."),
+            List.of("Cleanses every curse and ailment while held",
+                    "Regeneration while held",
+                    "Steals 30% of damage dealt as health",
+                    "Hits grant Absorption; undead take 75% more damage"),
+            new Object[]{Enchantment.SHARPNESS, 12, Enchantment.SWEEPING_EDGE, 5, Enchantment.LOOTING, 5,
+                    Enchantment.UNBREAKING, 10, Enchantment.MENDING, 1},
+            "NBN/TST/NEN",
+            new Object[]{'N', Material.NETHER_STAR, 'B', Material.BEACON, 'T', Material.TOTEM_OF_UNDYING,
+                    'S', Material.NETHERITE_SWORD, 'E', Material.ENCHANTED_GOLDEN_APPLE}),
+
+    MALEDICTION("malediction", "Malediction", "#ff1744", "#4a148c", Material.NETHERITE_SWORD, Particle.SOUL_FIRE_FLAME, Particle.SMOKE, true, 60, 1.5,
+            "Doom Decree",
+            List.of("Curse everything within 18 blocks with Wither,",
+                    "Weakness, Slowness and Hunger, and drain",
+                    "life from every cursed soul."),
+            List.of("Every hit lays a random curse",
+                    "+12% damage per curse on the target (max +60%)",
+                    "Immune to Wither while held"),
+            new Object[]{Enchantment.SHARPNESS, 12, Enchantment.SWEEPING_EDGE, 5, Enchantment.LOOTING, 5,
+                    Enchantment.UNBREAKING, 10, Enchantment.MENDING, 1},
+            "NWN/TST/NDN",
+            new Object[]{'N', Material.NETHER_STAR, 'W', Material.WITHER_SKELETON_SKULL, 'T', Material.TOTEM_OF_UNDYING,
+                    'S', Material.NETHERITE_SWORD, 'D', Material.DRAGON_BREATH});
 
     public final String id;
     public final String display;
@@ -249,6 +280,18 @@ public enum LegendaryWeapon {
         this.enchantPairs = enchantPairs;
         this.shape = shape;
         this.ingredientPairs = ingredientPairs;
+    }
+
+    /** Mythic weapons sit above the legendary tier: the weapons of the God of Blessings and the God of Curses. */
+    public boolean mythic() { return this == BENEDICTION || this == MALEDICTION; }
+
+    /** Title line for mythic weapons (null for everything else). */
+    public String epithet() {
+        return switch (this) {
+            case BENEDICTION -> "Weapon of the God of Blessings";
+            case MALEDICTION -> "Weapon of the God of Curses";
+            default -> null;
+        };
     }
 
     /** MiniMessage for text shaded from this weapon's first colour to its second. */

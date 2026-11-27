@@ -248,6 +248,31 @@ legendary:
           "P": PHANTOM_MEMBRANE
           "E": ELYTRA
           "T": TOTEM_OF_UNDYING
+    # ---- MYTHIC tier: the weapons of the God of Blessings and the God of Curses ----
+    benediction:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 60
+      recipe:
+        shape: ["NBN", "TST", "NEN"]
+        ingredients:
+          "N": NETHER_STAR
+          "B": BEACON
+          "T": TOTEM_OF_UNDYING
+          "S": NETHERITE_SWORD
+          "E": ENCHANTED_GOLDEN_APPLE
+    malediction:
+      craftable: true
+      max-crafted: 1
+      cooldown-seconds: 60
+      recipe:
+        shape: ["NWN", "TST", "NDN"]
+        ingredients:
+          "N": NETHER_STAR
+          "W": WITHER_SKELETON_SKULL
+          "T": TOTEM_OF_UNDYING
+          "S": NETHERITE_SWORD
+          "D": DRAGON_BREATH
 
 ritual:
   # How long the ritual lasts once started.

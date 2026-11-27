@@ -272,9 +272,9 @@ public final class LegendaryFx {
     public Material core(LegendaryWeapon w) {
         return switch (w) {
             case GOD_MACE -> Material.GOLD_BLOCK;
-            case DAWNBREAKER, THUNDER_ROD -> Material.GLOWSTONE;
+            case DAWNBREAKER, THUNDER_ROD, BENEDICTION -> Material.GLOWSTONE;
             case SOUL_REAPER, STORMCALLER, GOD_ELYTRA -> Material.SEA_LANTERN;
-            case VOIDPIERCER -> Material.CRYING_OBSIDIAN;
+            case VOIDPIERCER, MALEDICTION -> Material.CRYING_OBSIDIAN;
             case TITAN_WRATH, EXECUTIONER -> Material.REDSTONE_BLOCK;
             case HELLFIRE_CROSSBOW, INFERNAL_SCEPTER -> Material.MAGMA_BLOCK;
             case FROSTBRAND -> Material.BLUE_ICE;
@@ -287,11 +287,11 @@ public final class LegendaryFx {
     /** The translucent outer material of a weapon's solid effects. */
     public Material glass(LegendaryWeapon w) {
         return switch (w) {
-            case GOD_MACE, THUNDER_ROD -> Material.YELLOW_STAINED_GLASS;
+            case GOD_MACE, THUNDER_ROD, BENEDICTION -> Material.YELLOW_STAINED_GLASS;
             case DAWNBREAKER, HELLFIRE_CROSSBOW, INFERNAL_SCEPTER -> Material.ORANGE_STAINED_GLASS;
             case SOUL_REAPER -> Material.CYAN_STAINED_GLASS;
             case VOIDPIERCER, SHADOWFANG, EVENT_HORIZON -> Material.PURPLE_STAINED_GLASS;
-            case TITAN_WRATH, EXECUTIONER -> Material.RED_STAINED_GLASS;
+            case TITAN_WRATH, EXECUTIONER, MALEDICTION -> Material.RED_STAINED_GLASS;
             case STORMCALLER, FROSTBRAND, GOD_ELYTRA -> Material.LIGHT_BLUE_STAINED_GLASS;
             case VIPER_FANG -> Material.LIME_STAINED_GLASS;
             case STARGAZER -> Material.WHITE_STAINED_GLASS;

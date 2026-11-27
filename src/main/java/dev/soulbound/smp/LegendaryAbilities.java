@@ -58,6 +58,12 @@ public final class LegendaryAbilities {
             EntityType.WITHER, EntityType.PHANTOM, EntityType.ZOMBIFIED_PIGLIN, EntityType.ZOGLIN,
             EntityType.SKELETON_HORSE, EntityType.ZOMBIE_HORSE);
 
+    /** Every ailment the Benediction cleanses and the Malediction deals out. */
+    private static final List<PotionEffectType> CURSES = List.of(
+            PotionEffectType.POISON, PotionEffectType.WITHER, PotionEffectType.SLOWNESS, PotionEffectType.WEAKNESS,
+            PotionEffectType.BLINDNESS, PotionEffectType.NAUSEA, PotionEffectType.HUNGER,
+            PotionEffectType.MINING_FATIGUE, PotionEffectType.DARKNESS);
+
     /** A player flying through the air after a leap-type power; resolved when they land. */
     private static final class Slam {
         final long start = System.currentTimeMillis();
@@ -217,6 +223,15 @@ public final class LegendaryAbilities {
             case EXECUTIONER -> fx.sp(Particle.DAMAGE_INDICATOR, base.clone().add(0, 1.8, 0), 1, 0.3, 0.1, 0.3, 0.0);
             case INFERNAL_SCEPTER -> fx.sp(Particle.FLAME, base.clone().add(0, 1.0, 0), 2, 0.5, 0.5, 0.5, 0.01);
             case THUNDER_ROD -> fx.sp(Particle.ELECTRIC_SPARK, head, 2, 0.5, 0.3, 0.5, 0.2);
+            case BENEDICTION -> {
+                fx.ring(head.clone().add(0, 0.3, 0), 0.45, 10, fx.particle(Particle.END_ROD, 1, 0.0, 0.0)); // a halo
+                fx.sp(Particle.HAPPY_VILLAGER, base.clone().add(0, 1.0, 0), 1, 0.5, 0.6, 0.5, 0.0);
+            }
+            case MALEDICTION -> {
+                fx.ring(base.clone().add(0, 0.05, 0), 0.9, 8, fx.dust(w.rgbA, w.rgbB, 1.2f, 1, 0.02)); // a creeping sigil
+                fx.sp(Particle.SOUL_FIRE_FLAME, base.clone().add(0, 0.1, 0), 2, 0.4, 0.05, 0.4, 0.01);
+                fx.sp(Particle.SMOKE, head, 1, 0.3, 0.1, 0.3, 0.01);
+            }
         }
     }
 
@@ -237,6 +252,12 @@ public final class LegendaryAbilities {
                 p.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 60, 0, true, false, false));
             } else if (w == LegendaryWeapon.VIPER_FANG) {
                 p.removePotionEffect(PotionEffectType.POISON);
+            } else if (w == LegendaryWeapon.BENEDICTION) {
+                // the God of Blessings shrugs off every curse, including the world events
+                for (PotionEffectType bad : CURSES) p.removePotionEffect(bad);
+                p.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 60, 0, true, false, false));
+            } else if (w == LegendaryWeapon.MALEDICTION) {
+                p.removePotionEffect(PotionEffectType.WITHER);
             }
         }
     }
@@ -525,6 +546,8 @@ public final class LegendaryAbilities {
             case EXECUTIONER -> headsmansLeap(p);
             case INFERNAL_SCEPTER -> dragonfire(p);
             case THUNDER_ROD -> callThunder(p);
+            case BENEDICTION -> divineGrace(p);
+            case MALEDICTION -> doomDecree(p);
             default -> false;
         };
         if (!ok) return;
@@ -1084,6 +1107,118 @@ public final class LegendaryAbilities {
         }
     }
 
+    // ------------------------------------------------------------------ mythic weapons
+
+    private int countCurses(LivingEntity le) {
+        int n = 0;
+        for (PotionEffectType t : CURSES) if (le.hasPotionEffect(t)) n++;
+        return n;
+    }
+
+    /** Benediction: full heal and a stack of buffs, blessings for nearby players, holy light for hostile mobs. */
+    private boolean divineGrace(Player p) {
+        final LegendaryWeapon b = LegendaryWeapon.BENEDICTION;
+        final Location c = p.getLocation();
+        final World w = c.getWorld();
+        final double radius = 14.0;
+
+        AttributeInstance max = p.getAttribute(Attribute.MAX_HEALTH);
+        heal(p, max != null ? max.getValue() : 20.0);
+        for (PotionEffectType bad : CURSES) p.removePotionEffect(bad);
+        p.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 400, 4));
+        p.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 200, 2));
+        p.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, 300, 1));
+        p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 300, 1));
+        p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 300, 1));
+
+        int blessed = 0;
+        int smitten = 0;
+        for (Entity en : w.getNearbyEntities(c, radius, radius, radius)) {
+            if (en.getLocation().distance(c) > radius) continue;
+            if (en instanceof Player other) {
+                if (other.equals(p) || other.getGameMode() == GameMode.SPECTATOR) continue;
+                for (PotionEffectType bad : CURSES) other.removePotionEffect(bad);
+                other.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 200, 1));
+                other.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 300, 1));
+                other.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 200, 0));
+                fx.sp(Particle.TOTEM_OF_UNDYING, other.getLocation().add(0, 1, 0), 25, 0.4, 0.8, 0.4, 0.3);
+                blessed++;
+            } else if (en instanceof Enemy && validTarget(p, en)) {
+                LivingEntity le = (LivingEntity) en;
+                hurt(p, le, 20.0);
+                le.setFireTicks(100);
+                if (smitten < 8) {
+                    Location at = le.getLocation();
+                    fx.bolt(at.clone().add(0, 14, 0), at, 0.35f, fx.core(b), fx.glass(b), 8);
+                }
+                smitten++;
+            }
+        }
+
+        Consumer<Location> gold = fx.combo(fx.signature(b, 2, 0.06), fx.particle(Particle.END_ROD, 1, 0.02, 0.02));
+        fx.animate(16, t -> {
+            fx.helix(c, 0.2 * (t + 1), 1.4 - t * 0.04, 2.0, fx.n(20), gold);
+            fx.ring(c.clone().add(0, 0.1, 0), 0.6 + t * 0.85, fx.n(48), gold);
+        });
+        fx.sp(Particle.TOTEM_OF_UNDYING, c.clone().add(0, 1, 0), 60, 0.6, 1.0, 0.6, 0.4);
+        if (fx.solid()) {
+            fx.beam(c, c.clone().add(0, 40, 0), 2.0f, fx.glass(b), 30);
+            fx.beam(c, c.clone().add(0, 40, 0), 0.8f, fx.core(b), 26);
+            fx.shockRing(c.clone().add(0, 0.1, 0), 0.5, radius, 0.3f, 0.5f, fx.core(b), 16);
+            fx.shockRing(c.clone().add(0, 0.1, 0), 0.4, radius * 0.7, 0.2f, 0.4f, fx.glass(b), 14);
+        }
+        fx.sound(c, Sound.BLOCK_BEACON_ACTIVATE, 1.5f, 1.4f);
+        fx.sound(c, Sound.ITEM_TOTEM_USE, 1.0f, 1.0f);
+        fx.sound(c, Sound.BLOCK_AMETHYST_BLOCK_CHIME, 1.5f, 0.6f);
+        say(p, b.color + "<bold>DIVINE GRACE!</bold> <gray>blessed <white>" + blessed + "<gray>, smote <white>" + smitten);
+        return true;
+    }
+
+    /** Malediction: a wave of curses over everything nearby, feeding the wielder with stolen life. */
+    private boolean doomDecree(Player p) {
+        final LegendaryWeapon m = LegendaryWeapon.MALEDICTION;
+        final Location c = p.getLocation();
+        final World w = c.getWorld();
+        final double radius = 18.0;
+
+        int cursed = 0;
+        List<Location> marks = new ArrayList<>();
+        for (Entity en : w.getNearbyEntities(c, radius, radius, radius)) {
+            if (!validTarget(p, en)) continue;
+            LivingEntity le = (LivingEntity) en;
+            if (le.getLocation().distance(c) > radius) continue;
+            hurt(p, le, 8.0);
+            le.addPotionEffect(new PotionEffect(PotionEffectType.WITHER, 200, 2));
+            le.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 200, 1));
+            le.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 120, 1));
+            le.addPotionEffect(new PotionEffect(PotionEffectType.HUNGER, 200, 2));
+            le.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 200, 0));
+            cursed++;
+            if (marks.size() < 8) marks.add(le.getLocation());
+        }
+        heal(p, Math.min(20.0, cursed * 3.0));
+
+        Consumer<Location> dark = fx.combo(fx.signature(m, 2, 0.06), fx.particle(Particle.SOUL_FIRE_FLAME, 1, 0.04, 0.02));
+        fx.animate(16, t -> {
+            double r = radius * (t + 1) / 16.0;
+            fx.ring(c.clone().add(0, 0.1, 0), r, fx.n(60), dark);
+            fx.ring(c.clone().add(0, 0.1, 0), r * 0.6, fx.n(36), fx.particle(Particle.SMOKE, 1, 0.05, 0.02));
+            if (t % 4 == 0) fx.helix(c, 3.0, Math.max(0.5, 3.5 - t * 0.2), 1.5, fx.n(26), dark);
+        });
+        if (fx.solid()) {
+            fx.shockRing(c.clone().add(0, 0.1, 0), 0.5, radius, 0.35f, 0.5f, fx.core(m), 18);
+            fx.shockRing(c.clone().add(0, 0.1, 0), 0.4, radius * 0.7, 0.25f, 0.4f, fx.glass(m), 16);
+            fx.beam(c, c.clone().add(0, 30, 0), 1.6f, fx.glass(m), 24);
+            fx.beam(c, c.clone().add(0, 30, 0), 0.6f, fx.core(m), 20);
+            for (Location at : marks) fx.bolt(at.clone().add(0, 14, 0), at, 0.35f, fx.core(m), fx.glass(m), 8);
+        }
+        for (Location at : marks) fx.sphere(at.clone().add(0, 1, 0), 0.9, fx.n(18), dark);
+        fx.sound(c, Sound.ENTITY_ELDER_GUARDIAN_CURSE, 1.5f, 0.7f);
+        fx.sound(c, Sound.ENTITY_WITHER_SPAWN, 0.8f, 0.6f);
+        say(p, m.color + "<bold>DOOM DECREE!</bold> <gray>cursed <white>" + cursed + "<gray> soul(s)");
+        return true;
+    }
+
     // ------------------------------------------------------------------ God Elytra
 
     private double elytraMaxSpeed() {
@@ -1429,6 +1564,31 @@ public final class LegendaryAbilities {
                         fx.sound(hc, Sound.ENTITY_PLAYER_ATTACK_CRIT, 1.2f, 0.6f);
                         fx.sound(hc, Sound.BLOCK_ANVIL_LAND, 0.6f, 1.4f);
                     }
+                }
+            }
+            case BENEDICTION -> {
+                if (victim instanceof LivingEntity le) {
+                    if (UNDEAD.contains(le.getType())) {
+                        e.setDamage(e.getDamage() * 1.75);
+                        le.setFireTicks(80);
+                        fx.sp(Particle.END_ROD, hc, 20, 0.3, 0.5, 0.3, 0.12);
+                    }
+                    heal(p, e.getDamage() * 0.30);
+                    p.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 100, 1));
+                    stream(hc, p, 0, fx.combo(fx.dust(w.rgbA, w.rgbB, 1.0f, 1, 0.02),
+                            fx.particle(Particle.HAPPY_VILLAGER, 1, 0.02, 0.0)));
+                }
+            }
+            case MALEDICTION -> {
+                if (victim instanceof LivingEntity le) {
+                    int curses = countCurses(le);
+                    if (curses > 0) e.setDamage(e.getDamage() * (1.0 + Math.min(0.6, curses * 0.12)));
+                    PotionEffectType pick = CURSES.get(ThreadLocalRandom.current().nextInt(CURSES.size()));
+                    le.addPotionEffect(new PotionEffect(pick, 100, 0));
+                    Consumer<Location> curse = fx.combo(fx.dust(w.rgbA, w.rgbB, 1.2f, 1, 0.02),
+                            fx.particle(Particle.SOUL_FIRE_FLAME, 1, 0.03, 0.02));
+                    fx.sphere(hc, 0.8, fx.n(16), curse);
+                    fx.sound(hc, Sound.ENTITY_ELDER_GUARDIAN_CURSE, 0.35f, 1.6f);
                 }
             }
             case INFERNAL_SCEPTER -> {

@@ -71,7 +71,7 @@ public final class LegendaryListener implements Listener {
         plugin.legendary().markCrafted(w);
 
         HumanEntity who = e.getWhoClicked();
-        plugin.msg().broadcast("<gold><bold>LEGENDARY FORGED!</bold> <white>" + Msg.esc(who.getName())
+        plugin.msg().broadcast((w.mythic() ? "<light_purple><bold>MYTHIC FORGED!</bold> <white>" : "<gold><bold>LEGENDARY FORGED!</bold> <white>") + Msg.esc(who.getName())
                 + "<gray> has forged " + w.title() + "<gray>!");
         plugin.msg().titleAll(w.title(), "<gray>has been forged by " + Msg.esc(who.getName()));
         plugin.abilities().fx().forge(who.getLocation(), w);
